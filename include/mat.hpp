@@ -23,10 +23,6 @@ private:
 
 public:
 
-    SquareMatrix()
-        : matrix_{0}
-        , transposed_{0} {}
-
     static SquareMatrix make_random(T lower_bound, T upper_bound) {
         thread_local std::random_device rd; 
         thread_local std::mt19937 gen(rd()); 
@@ -44,6 +40,18 @@ public:
         }
 
         return random_matrix;
+    }
+
+    SquareMatrix()
+        : matrix_{0}
+        , transposed_{0} {}
+
+    T& get(std::size_t x, std::size_t y) {
+        return matrix_[getIndex(x, y)];
+    }
+
+    const T& get(std::size_t x, std::size_t y) const {
+        return matrix_[getIndex(x, y)];
     }
 
     void print() const {
