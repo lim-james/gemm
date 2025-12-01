@@ -38,23 +38,19 @@ public:
         return random_matrix;
     }
 
-    SquareMatrix()
+    constexpr SquareMatrix()
         : matrix_{0}
         , transposed_{0} {}
 
     template<typename... Args>
         requires(sizeof...(Args) == N*N && 
                  std::conjunction_v<std::is_nothrow_convertible<Args, T>...>) 
-    SquareMatrix(Args&&... args) 
+    constexpr SquareMatrix(Args&&... args) 
         : matrix_{static_cast<T>(args)...} {
         compute_transpose();
     }
 
-    T& get(std::size_t x, std::size_t y) {
-        return matrix_[getIndex(x, y)];
-    }
-
-    const T& get(std::size_t x, std::size_t y) const {
+    constexpr const T& get(std::size_t x, std::size_t y) const {
         return matrix_[getIndex(x, y)];
     }
 
@@ -67,7 +63,7 @@ public:
         }
     }
 
-    SquareMatrix mul_naive(const SquareMatrix& other) const {
+    constexpr SquareMatrix mul_naive(const SquareMatrix& other) const {
         SquareMatrix product;
 
         for (std::size_t y = 0; y < N; ++y) {
@@ -143,7 +139,7 @@ public:
         return product;
     }
 
-    bool operator==(const SquareMatrix& other) const {
+    constexpr bool operator==(const SquareMatrix& other) const {
         for (std::size_t i = 0; i < N*N; ++i)
             if (matrix_[i] != other.matrix_[i])
                 return false;
@@ -152,7 +148,7 @@ public:
 
 private:
 
-    void compute_transpose() {
+    constexpr void compute_transpose() {
         for (std::size_t y = 0; y < N; ++y) {
             for (std::size_t x = 0; x <= y; ++x) {
                 transposed_[getIndex(x,y)] = matrix_[getIndex(y,x)];
@@ -161,7 +157,7 @@ private:
         }
     }
 
-    void pack_tiles(
+    constexpr void pack_tiles(
         const T* R0, const T* R1, const T* R2, const T* R3,
         T* pack, std::size_t K_blk
     ) const {
