@@ -3,6 +3,7 @@
 #include <array>
 #include <random>
 #include <print>
+#include <type_traits>
 
 #include <experimental/simd>
 
@@ -32,12 +33,7 @@ public:
         for (std::size_t i = 0; i < N*N; ++i) 
             random_matrix.matrix_[i] = distrib(gen);
 
-        for (std::size_t y = 0; y < N; ++y) {
-            for (std::size_t x = 0; x <= y; ++x) {
-                random_matrix.transposed_[getIndex(x,y)] = random_matrix.matrix_[getIndex(y,x)];
-                random_matrix.transposed_[getIndex(y,x)] = random_matrix.matrix_[getIndex(x,y)];
-            }
-        }
+        random_matrix.compute_transpose();
 
         return random_matrix;
     }
@@ -45,6 +41,14 @@ public:
     SquareMatrix()
         : matrix_{0}
         , transposed_{0} {}
+
+    template<typename... Args>
+        requires(sizeof...(Args) == N*N && 
+                 std::conjunction_v<std::is_nothrow_convertible<Args, T>...>) 
+    SquareMatrix(Args&&... args) 
+        : matrix_{static_cast<T>(args)...} {
+        compute_transpose();
+    }
 
     T& get(std::size_t x, std::size_t y) {
         return matrix_[getIndex(x, y)];
@@ -147,6 +151,15 @@ public:
     }
 
 private:
+
+    void compute_transpose() {
+        for (std::size_t y = 0; y < N; ++y) {
+            for (std::size_t x = 0; x <= y; ++x) {
+                transposed_[getIndex(x,y)] = matrix_[getIndex(y,x)];
+                transposed_[getIndex(y,x)] = matrix_[getIndex(x,y)];
+            }
+        }
+    }
 
     void pack_tiles(
         const T* R0, const T* R1, const T* R2, const T* R3,

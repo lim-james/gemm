@@ -2,14 +2,33 @@
 #include "../include/mat.hpp"
 
 int main() {
-    // 1. Constructor sanity
+    // fixed constructor
+    {
+        SquareMatrix<int, 4> A{
+        //   0   1   2   3 
+            00, 10, 20, 30, // 0
+            01, 11, 21, 31, // 1
+            02, 12, 22, 32, // 2
+            03, 13, 23, 33  // 3
+        };
+        assert(
+            A.get(0,0) == 00 &&
+            A.get(1,0) == 10 && 
+            A.get(3,1) == 31 && 
+            A.get(1,2) == 12 && 
+            A.get(3,3) == 33 && 
+            "manual construction failed"
+        );
+    }
+
+    // make random constructor sanity
     {
         SquareMatrix<int, 4> A = SquareMatrix<int, 4>::make_random(0, 5);
         SquareMatrix<int, 4> B = SquareMatrix<int, 4>::make_random(0, 5);
         assert(true && "construction OK");
     }
 
-    // 2. Naive vs SIMD equals small test
+    // naive vs simd equals small test
     {
         SquareMatrix<int, 4> A = SquareMatrix<int, 4>::make_random(0, 5);
         SquareMatrix<int, 4> B = SquareMatrix<int, 4>::make_random(0, 5);
@@ -20,7 +39,7 @@ int main() {
         assert(C1 == C2 && "SIMD must match naive for 4x4");
     }
 
-    // 3. Random multiple tests
+    // random multiple tests
     {
         for (int iter = 0; iter < 20; iter++) {
             SquareMatrix<int, 8> A = SquareMatrix<int, 8>::make_random(0, 9);
