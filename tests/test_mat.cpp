@@ -9,7 +9,7 @@ int main() {
         assert(true && "construction OK");
     }
 
-    // 2. Naive vs SIMDequals small test
+    // 2. Naive vs SIMD equals small test
     {
         SquareMatrix<int, 4> A = SquareMatrix<int, 4>::make_random(0, 5);
         SquareMatrix<int, 4> B = SquareMatrix<int, 4>::make_random(0, 5);
