@@ -9,3 +9,11 @@ add_compile_options(-O3 -march=native)
 include_directories(include)
 
 add_executable(GEMM src/main.cpp)
+
+# ---------- Tests ----------
+enable_testing()
+
+add_executable(gemm_tests tests/test_mat.cpp)
+target_link_libraries(gemm_tests PRIVATE)
+
+add_test(NAME GEMM.Tests COMMAND gemm_tests)
