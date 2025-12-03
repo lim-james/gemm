@@ -175,6 +175,8 @@ private:
         T* C0, T* C1, T* C2, T* C3,
         std::size_t K_blk
     ) const {
+        constexpr int PREFETCH_DISTANCE = 16;
+
         simd_t c00(0), c01(0), c02(0), c03(0);
         simd_t c10(0), c11(0), c12(0), c13(0);
         simd_t c20(0), c21(0), c22(0), c23(0);
@@ -182,6 +184,9 @@ private:
 
         const std::size_t K_simd = (K_blk / simd_t::size()) * simd_t::size();
         for (std::size_t k = 0; k < K_simd; k += simd_t::size()) {
+            __builtin_prefetch(A_pack + k + PREFETCH_DISTANCE);
+            __builtin_prefetch(B_pack + k + PREFETCH_DISTANCE);
+
             simd_t a0, a1, a2, a3;
             a0.copy_from(A_pack + 0*K_blk + k, stdx::vector_aligned);
             a1.copy_from(A_pack + 1*K_blk + k, stdx::vector_aligned);
