@@ -9,7 +9,7 @@
 
 namespace stdx = std::experimental;
 
-template<typename T, std::size_t N>
+template<typename T, std::size_t N> requires (N%4==0)
 class alignas(stdx::memory_alignment_v<stdx::native_simd<T>>) SquareMatrix {
 private:
 
