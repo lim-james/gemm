@@ -1,18 +1,11 @@
 #include "mat.hpp"
 
-#include <algorithm>
 #include <print>
 #include <chrono>
 #include <format>
-#include <cassert>
 #include <vector>
 #include <fstream>
 #include <filesystem>
-
-template<typename ...Args>
-inline void log_row(Args... args) {
-    std::println("{:5} | {:4} | {:10} | {:10} | {:5}", args...);
-}
 
 class [[nodiscard]] ScopeTimer {
 private:
@@ -29,17 +22,6 @@ public:
         *out_ = std::chrono::duration<double, std::milli>(end - start_).count();
     }
 };
-
-
-constexpr double calculate_throughput_per_s(double tottime_ms, std::size_t ncalls) {
-    constexpr double ms_to_s = 1'000.0;
-    return static_cast<double>(ncalls) / tottime_ms * ms_to_s; 
-}
-
-constexpr double calculate_throughput_per_ms(double tottime_ms, std::size_t ncalls) {
-    return static_cast<double>(ncalls) / tottime_ms; 
-
-}
 
 template<typename Fn>
 double run_batch(const Fn& fn, std::size_t batch_size) {
@@ -118,6 +100,7 @@ void save_runtimes(std::filesystem::path path, const std::vector<double>& times)
 
 int main(int argsc, char** argsv) {
     if (argsc <= 1) {
+        std::println("Specify [Matrix Width] [Batch Size = 1000] [Num Trail = 1000]");
         return 0;
     }
 
@@ -148,7 +131,6 @@ int main(int argsc, char** argsv) {
         std::format("mat{}_simd_{}x{}.txt", matrix_width, batch_size, num_trail),
         simd_timings
     );
-
     
     return 0;
 }
