@@ -33,8 +33,8 @@ int main() {
         SquareMatrix<int, 4> A = SquareMatrix<int, 4>::make_random(0, 5);
         SquareMatrix<int, 4> B = SquareMatrix<int, 4>::make_random(0, 5);
 
-        auto C1 = A.multiply(B, Impl::NAIVE);
-        auto C2 = A.multiply(B, Impl::TILING);
+        SquareMatrix<int, 4> C1{}; A.multiply(B, C1, Impl::NAIVE);
+        SquareMatrix<int, 4> C2{}; A.multiply(B, C2, Impl::TILING);
 
         assert(C1 == C2 && "SIMD must match naive for 4x4");
     }
@@ -44,10 +44,10 @@ int main() {
         for (int iter = 0; iter < 20; iter++) {
             SquareMatrix<int, 8> A = SquareMatrix<int, 8>::make_random(0, 9);
             SquareMatrix<int, 8> B = SquareMatrix<int, 8>::make_random(0, 9);
-            assert(
-                (A.multiply(B, Impl::NAIVE) == A.multiply(B, Impl::TILING)) 
-                && "8x8 check failed"
-            );
+
+            SquareMatrix<int, 8> C1{}; A.multiply(B, C1, Impl::NAIVE);
+            SquareMatrix<int, 8> C2{}; A.multiply(B, C2, Impl::TILING);
+            assert(C1 == C2 && "8x8 check failed");
         }
     }
 

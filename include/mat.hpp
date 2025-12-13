@@ -65,17 +65,18 @@ public:
         }
     }
 
-    constexpr SquareMatrix multiply(
+    constexpr void multiply(
         const SquareMatrix& other, 
+        SquareMatrix& out, 
         Impl implementation = Impl::TILING
     ) const {
         switch (implementation) {
-        case Impl::NAIVE:       return multiply_naive(other);
-        case Impl::TRANSPOSED:  return multiply_transposed(other);
-        case Impl::SIMD:        return multiply_naive(other);
-        case Impl::MICROKERNEL: return multiply_naive(other);
-        case Impl::TILING:      return multiply_tiling(other);
-        default: return SquareMatrix();
+        case Impl::NAIVE:       multiply_naive(other, out); return;
+        case Impl::TRANSPOSED:  multiply_transposed(other, out); return;
+        case Impl::SIMD:        multiply_simd(other, out); return;
+        case Impl::MICROKERNEL: multiply_naive(other, out); return;
+        case Impl::TILING:      multiply_tiling(other, out); return;
+        default: return;
         }
     }
 
@@ -124,8 +125,8 @@ private:
 
         const std::size_t K_simd = (K_blk / simd_t::size()) * simd_t::size();
         for (std::size_t k = 0; k < K_simd; k += simd_t::size()) {
-            __builtin_prefetch(A_pack + k + PREFETCH_DISTANCE);
-            __builtin_prefetch(B_pack + k + PREFETCH_DISTANCE);
+            // __builtin_prefetch(A_pack + k + PREFETCH_DISTANCE);
+            // __builtin_prefetch(B_pack + k + PREFETCH_DISTANCE);
 
             simd_t a0, a1, a2, a3;
             a0.copy_from(A_pack + 0*K_blk + k, stdx::vector_aligned);
@@ -166,48 +167,58 @@ private:
         C3[3] += c33[0] + c33[1] + c33[2] + c33[3];
     }
 
-    constexpr SquareMatrix multiply_naive(const SquareMatrix& other) const {
-        SquareMatrix product;
-
+    constexpr void multiply_naive(const SquareMatrix& other, SquareMatrix& out) const {
         for (std::size_t y = 0; y < N; ++y) {
             for (std::size_t x = 0; x < N; ++x) {
-                product.matrix_[getIndex(x,y)] = 0;
+                out.matrix_[getIndex(x,y)] = 0;
                 for (std::size_t k = 0; k < N; ++k) {
-                    product.matrix_[getIndex(x,y)] += matrix_[getIndex(k,y)] * other.matrix_[getIndex(x,k)];
+                    out.matrix_[getIndex(x,y)] += matrix_[getIndex(k,y)] * other.matrix_[getIndex(x,k)];
                 }
             }
         }
-
-        return product;
     }
 
-    SquareMatrix multiply_transposed(const SquareMatrix& other) const {
-        SquareMatrix product;
-
+    void multiply_transposed(const SquareMatrix& other, SquareMatrix& out) const {
         for (std::size_t y = 0; y < N; ++y) {
             for (std::size_t x = 0; x < N; ++x) {
-                product.matrix_[getIndex(x,y)] = 0;
+                out.matrix_[getIndex(x,y)] = 0;
                 for (std::size_t k = 0; k < N; ++k) {
-                    product.matrix_[getIndex(x,y)] += matrix_[getIndex(k,y)] * other.transposed_[getIndex(k,x)];
+                    out.matrix_[getIndex(x,y)] += matrix_[getIndex(k,y)] * other.transposed_[getIndex(k,x)];
                 }
             }
         }
-
-        return product;
     }
 
-    SquareMatrix multiply_simd(const SquareMatrix& other) const {}
-    SquareMatrix multiply_microkernel(const SquareMatrix& other) const {}
+    void multiply_simd(const SquareMatrix& other, SquareMatrix& out) const {
+        for (std::size_t y = 0; y < N; ++y) {
+            for (std::size_t x = 0; x < N; ++x) {
+                out.matrix_[getIndex(x,y)] = 0;
+                auto a_row = matrix_.data() + y * N;
+                auto b_col = other.transposed_.data() + x * N;
 
-    SquareMatrix multiply_tiling(const SquareMatrix& other) const {
-        SquareMatrix product{};
+                simd_t vsum{};
+                for (std::size_t k{}; k + simd_t::size() <= N; k += simd_t::size()) {
+                    simd_t va;
+                    simd_t vb;
 
+                    va.copy_from(a_row + k, stdx::vector_aligned);
+                    vb.copy_from(b_col + k, stdx::vector_aligned);
+                    vsum += va * vb;
+                }
+
+                out.matrix_[getIndex(x,y)] = vsum[0] + vsum[1] + vsum[2] + vsum[3];
+            }
+        }
+    }
+    void multiply_microkernel(const SquareMatrix& other, SquareMatrix& out) const {}
+
+    void multiply_tiling(const SquareMatrix& other, SquareMatrix& out) const {
         constexpr std::size_t TILE_SIZE = 32;
         constexpr std::size_t NR = 4;
 
         const T* A = matrix_.data();
         const T* BT = other.transposed_.data();
-        T* C = product.matrix_.data();
+        T* C = out.matrix_.data();
 
         alignas(64) T A_pack[NR * TILE_SIZE];
         alignas(64) T B_pack[NR * TILE_SIZE];
@@ -255,8 +266,6 @@ private:
                 }
             }
         }
-
-        return product;
     }
 };
 

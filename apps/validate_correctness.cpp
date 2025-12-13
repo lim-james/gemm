@@ -15,7 +15,11 @@ bool validate_matrix_multiplication(
 ) {
     auto a = SquareMatrix<std::int32_t, N>::make_random(lower_bound, upper_bound);
     auto b = SquareMatrix<std::int32_t, N>::make_random(lower_bound, upper_bound);
-    return a.multiply(b, Impl::NAIVE) == a.multiply(b, implementation);
+    
+    SquareMatrix<std::int32_t, N> out1{}; a.multiply(b, out1, Impl::NAIVE);
+    SquareMatrix<std::int32_t, N> out2{}; a.multiply(b, out2, implementation);
+
+    return out1 == out2;
 }
 
 template<std::size_t START_SIZE, std::size_t END_SIZE>
