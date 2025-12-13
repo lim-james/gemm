@@ -2,7 +2,8 @@
 
 #include <algorithm>
 #include <print>
-#include <string>
+#include <array>
+#include <string_view>
 #include <cassert>
 #include <cstdint>
 
@@ -40,7 +41,6 @@ std::size_t validate_implementation(
     std::int32_t lower_bound, 
     std::int32_t upper_bound,
     Impl implementation
-
 ) {
     std::size_t correct_count = 0;
     
@@ -69,19 +69,18 @@ int main(int argsc, char** argsv) {
 
     const std::size_t ideal_correctness = (256 / 4) * num_runs;
 
-    auto transposed_correct = validate_implementation(num_runs, lower_bound, upper_bound, Impl::TRANSPOSED);
-    auto tiling_correct     = validate_implementation(num_runs, lower_bound, upper_bound, Impl::TILING);
+    auto methods = std::to_array<std::pair<Impl, std::string_view>>({
+        {Impl::TRANSPOSED, "Transposed"},
+        {Impl::TILING, "Tiling"}
+    });
 
-    double transposed_score = static_cast<double>(transposed_correct) 
-                            / static_cast<double>(ideal_correctness) 
-                            * 100.0;
-
-    double tiling_score = static_cast<double>(tiling_correct) 
-                        / static_cast<double>(ideal_correctness) 
-                        * 100.0;
-
-    std::println("transposed : {}/{} [{:.2f}%]", transposed_correct, ideal_correctness, transposed_score);
-    std::println("tiling     : {}/{} [{:.2f}%]", tiling_correct,     ideal_correctness, tiling_score);
+    for (const auto& [implementation, name]: methods) {
+        auto correct_count = validate_implementation(num_runs, lower_bound, upper_bound, implementation);
+        double score = static_cast<double>(correct_count) 
+                     / static_cast<double>(ideal_correctness) 
+                     * 100.0;
+        std::println("{} : {}/{} [{:.2f}%]", name, correct_count, ideal_correctness, score);
+     }
 
     return 0;
 
