@@ -9,6 +9,8 @@
 
 namespace stdx = std::experimental;
 
+enum class Impl: char { NAIVE, TRANSPOSED, SIMD, MICROKERNEL, TILING };
+
 template<typename T, std::size_t N> requires (N%4==0)
 class alignas(stdx::memory_alignment_v<stdx::native_simd<T>>) SquareMatrix {
 private:
@@ -63,80 +65,18 @@ public:
         }
     }
 
-    constexpr SquareMatrix mul_naive(const SquareMatrix& other) const {
-        SquareMatrix product;
-
-        for (std::size_t y = 0; y < N; ++y) {
-            for (std::size_t x = 0; x < N; ++x) {
-                product.matrix_[getIndex(x,y)] = 0;
-                for (std::size_t k = 0; k < N; ++k) {
-                    product.matrix_[getIndex(x,y)] += matrix_[getIndex(k,y)] * other.matrix_[getIndex(x,k)];
-                }
-            }
+    constexpr SquareMatrix multiply(
+        const SquareMatrix& other, 
+        Impl implementation = Impl::TILING
+    ) const {
+        switch (implementation) {
+        case Impl::NAIVE:       return multiply_naive(other);
+        case Impl::TRANSPOSED:  return multiply_naive(other);
+        case Impl::SIMD:        return multiply_naive(other);
+        case Impl::MICROKERNEL: return multiply_naive(other);
+        case Impl::TILING:      return multiply_tiling(other);
+        default: return SquareMatrix();
         }
-
-        return product;
-    }
-
-    SquareMatrix mul_simd(const SquareMatrix& other) const {
-        SquareMatrix product{};
-
-        constexpr std::size_t TILE_SIZE = 32;
-        constexpr std::size_t NR = 4;
-
-        const T* A = matrix_.data();
-        const T* BT = other.transposed_.data();
-        T* C = product.matrix_.data();
-
-        alignas(64) T A_pack[NR * TILE_SIZE];
-        alignas(64) T B_pack[NR * TILE_SIZE];
-
-        for (std::size_t ii = 0; ii < N; ii += TILE_SIZE) {
-            for (std::size_t jj = 0; jj < N; jj += TILE_SIZE) {
-                for (std::size_t kk = 0; kk < N; kk += TILE_SIZE) {
-                    
-                    const std::size_t i_end = std::min(ii + TILE_SIZE, N);
-                    const std::size_t j_end = std::min(jj + TILE_SIZE, N);
-                    const std::size_t k_end = std::min(kk + TILE_SIZE, N);
-
-                    const std::size_t K_blk  = k_end - kk;
-
-                    for (std::size_t i = ii; i < i_end; i += NR) {
-
-                        const T* A0 = A + (i+0)*N + kk;
-                        const T* A1 = A + (i+1)*N + kk;
-                        const T* A2 = A + (i+2)*N + kk;
-                        const T* A3 = A + (i+3)*N + kk;
-
-                        pack_tiles(A0, A1, A2, A3, A_pack, K_blk);
-
-                        for (std::size_t j = jj; j < j_end; j += NR) {
-                            const T* B0 = BT + (j+0)*N + kk;
-                            const T* B1 = BT + (j+1)*N + kk;
-                            const T* B2 = BT + (j+2)*N + kk;
-                            const T* B3 = BT + (j+3)*N + kk;
-
-                            pack_tiles(B0, B1, B2, B3, B_pack, K_blk);
-                                
-                            T* C0 = C + (i+0)*N + j;
-                            T* C1 = C + (i+1)*N + j;
-                            T* C2 = C + (i+2)*N + j;
-                            T* C3 = C + (i+3)*N + j;
-
-                            microkernel_4x4(
-                                A_pack, B_pack, 
-                                C0, C1, C2, C3,
-                                K_blk
-                            );
-
-                        }
-                    }
-                }
-            }
-        }
-
-
-        return product;
     }
 
     constexpr bool operator==(const SquareMatrix& other) const {
@@ -224,6 +164,81 @@ private:
         C3[1] += c31[0] + c31[1] + c31[2] + c31[3];
         C3[2] += c32[0] + c32[1] + c32[2] + c32[3];
         C3[3] += c33[0] + c33[1] + c33[2] + c33[3];
+    }
+
+    constexpr SquareMatrix multiply_naive(const SquareMatrix& other) const {
+        SquareMatrix product;
+
+        for (std::size_t y = 0; y < N; ++y) {
+            for (std::size_t x = 0; x < N; ++x) {
+                product.matrix_[getIndex(x,y)] = 0;
+                for (std::size_t k = 0; k < N; ++k) {
+                    product.matrix_[getIndex(x,y)] += matrix_[getIndex(k,y)] * other.matrix_[getIndex(x,k)];
+                }
+            }
+        }
+
+        return product;
+    }
+
+    SquareMatrix multiply_tiling(const SquareMatrix& other) const {
+        SquareMatrix product{};
+
+        constexpr std::size_t TILE_SIZE = 32;
+        constexpr std::size_t NR = 4;
+
+        const T* A = matrix_.data();
+        const T* BT = other.transposed_.data();
+        T* C = product.matrix_.data();
+
+        alignas(64) T A_pack[NR * TILE_SIZE];
+        alignas(64) T B_pack[NR * TILE_SIZE];
+
+        for (std::size_t ii = 0; ii < N; ii += TILE_SIZE) {
+            for (std::size_t jj = 0; jj < N; jj += TILE_SIZE) {
+                for (std::size_t kk = 0; kk < N; kk += TILE_SIZE) {
+                    
+                    const std::size_t i_end = std::min(ii + TILE_SIZE, N);
+                    const std::size_t j_end = std::min(jj + TILE_SIZE, N);
+                    const std::size_t k_end = std::min(kk + TILE_SIZE, N);
+
+                    const std::size_t K_blk  = k_end - kk;
+
+                    for (std::size_t i = ii; i < i_end; i += NR) {
+
+                        const T* A0 = A + (i+0)*N + kk;
+                        const T* A1 = A + (i+1)*N + kk;
+                        const T* A2 = A + (i+2)*N + kk;
+                        const T* A3 = A + (i+3)*N + kk;
+
+                        pack_tiles(A0, A1, A2, A3, A_pack, K_blk);
+
+                        for (std::size_t j = jj; j < j_end; j += NR) {
+                            const T* B0 = BT + (j+0)*N + kk;
+                            const T* B1 = BT + (j+1)*N + kk;
+                            const T* B2 = BT + (j+2)*N + kk;
+                            const T* B3 = BT + (j+3)*N + kk;
+
+                            pack_tiles(B0, B1, B2, B3, B_pack, K_blk);
+                                
+                            T* C0 = C + (i+0)*N + j;
+                            T* C1 = C + (i+1)*N + j;
+                            T* C2 = C + (i+2)*N + j;
+                            T* C3 = C + (i+3)*N + j;
+
+                            microkernel_4x4(
+                                A_pack, B_pack, 
+                                C0, C1, C2, C3,
+                                K_blk
+                            );
+
+                        }
+                    }
+                }
+            }
+        }
+
+        return product;
     }
 };
 

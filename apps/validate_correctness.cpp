@@ -9,7 +9,7 @@ template<std::size_t N>
 bool validate_matrix_multiplication(std::int32_t lower_bound, std::int32_t upper_bound) {
     auto a = SquareMatrix<std::int32_t, N>::make_random(lower_bound, upper_bound);
     auto b = SquareMatrix<std::int32_t, N>::make_random(lower_bound, upper_bound);
-    return a.mul_naive(b) == a.mul_simd(b);
+    return a.multiply(b, Impl::NAIVE) == a.multiply(b, Impl::TILING);
 }
 
 template<std::size_t START_SIZE, std::size_t END_SIZE>

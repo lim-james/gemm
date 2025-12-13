@@ -60,14 +60,14 @@ template<std::size_t N>
 void run_matrix_multiplication_simd() {
     static auto a = SquareMatrix<std::int32_t, N>::make_random(1, 10);
     static auto b = SquareMatrix<std::int32_t, N>::make_random(1, 10);
-    volatile auto sink = a.mul_simd(b);
+    volatile auto sink = a.multiply(b, Impl::TILING);
 }
 
 template<std::size_t N>
 void run_matrix_multiplication_naive() {
     static auto a = SquareMatrix<std::int32_t, N>::make_random(1, 10);
     static auto b = SquareMatrix<std::int32_t, N>::make_random(1, 10);
-    volatile auto sink = a.mul_naive(b);
+    volatile auto sink = a.multiply(b, Impl::NAIVE);
 }
 
 void run_simd_experiment(int matrix_width) {
