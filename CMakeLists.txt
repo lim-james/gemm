@@ -29,8 +29,8 @@ set(BENCHMARK_ENABLE_TESTING OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(googlebenchmark)
 
 
-add_executable(benchmark apps/gemm_benchmark.cpp)
-target_link_libraries(benchmark PRIVATE 
+add_executable(gemm_benchmark apps/gemm_benchmark.cpp)
+target_link_libraries(gemm_benchmark PRIVATE 
     gemm
     benchmark::benchmark 
     benchmark::benchmark_main

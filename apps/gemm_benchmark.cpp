@@ -1,137 +1,59 @@
 #include "mat.hpp"
+#include <benchmark/benchmark.h>
+#include <cmath> 
 
-#include <print>
-#include <chrono>
-#include <format>
-#include <vector>
-#include <fstream>
-#include <filesystem>
-
-class [[nodiscard]] ScopeTimer {
-private:
-    double* out_;
-    std::chrono::time_point<std::chrono::high_resolution_clock> start_;
-
-public:
-    ScopeTimer(double* out)
-        : out_(out)
-        , start_(std::chrono::high_resolution_clock::now()) {}
-
-    ~ScopeTimer() {
-        auto end = std::chrono::high_resolution_clock::now();
-        *out_ = std::chrono::duration<double, std::milli>(end - start_).count();
-    }
-};
-
-template<typename Fn>
-double run_batch(const Fn& fn, std::size_t batch_size) {
-    double tottime_ms;
-    
-    {
-        auto _ = ScopeTimer(&tottime_ms);
-        for (std::size_t i = 0; i < batch_size; ++i) 
-            fn();
-    }
-
-    return tottime_ms;
-}
-
-template<typename Fn>
-std::vector<double> run_trail(
-    const Fn& fn, 
-    std::size_t batch_size, 
-    std::size_t num_trail
-) {
-    std::vector<double> sample_timings;
-    sample_timings.reserve(num_trail);
-
-    std::println("----- RUNNING -----");
-    std::println("Num trail:  {}", num_trail);
-    std::println("Batch size: {}", batch_size);
-    std::println("-------------------");
-
-    for (std::size_t i = 0; i < num_trail; ++i) 
-        sample_timings.push_back(run_batch(fn, batch_size));
-
-    return sample_timings;
-}
-
-template<std::size_t N>
-void run_matrix_multiplication_simd() {
+template <std::size_t N>
+void RunBenchmark(benchmark::State& state, Impl implementation) {
     static auto a = SquareMatrix<std::int32_t, N>::make_random(1, 10);
     static auto b = SquareMatrix<std::int32_t, N>::make_random(1, 10);
-    volatile auto sink = a.multiply(b, Impl::TILING);
-}
 
-template<std::size_t N>
-void run_matrix_multiplication_naive() {
-    static auto a = SquareMatrix<std::int32_t, N>::make_random(1, 10);
-    static auto b = SquareMatrix<std::int32_t, N>::make_random(1, 10);
-    volatile auto sink = a.multiply(b, Impl::NAIVE);
-}
-
-void run_simd_experiment(int matrix_width) {
-    switch (matrix_width) {
-    case 4:   run_matrix_multiplication_simd<4>();   break;
-    case 8:   run_matrix_multiplication_simd<8>();   break;
-    case 16:  run_matrix_multiplication_simd<16>();  break;
-    case 32:  run_matrix_multiplication_simd<32>();  break;
-    case 64:  run_matrix_multiplication_simd<64>();  break;
-    case 128: run_matrix_multiplication_simd<128>(); break;
-    }
-}
-
-void run_naive_experiment(int matrix_width) {
-    switch (matrix_width) {
-    case 4:   run_matrix_multiplication_naive<4>();   break;
-    case 8:   run_matrix_multiplication_naive<8>();   break;
-    case 16:  run_matrix_multiplication_naive<16>();  break;
-    case 32:  run_matrix_multiplication_naive<32>();  break;
-    case 64:  run_matrix_multiplication_naive<64>();  break;
-    case 128: run_matrix_multiplication_naive<128>(); break;
-    }
-}
-
-void save_runtimes(std::filesystem::path path, const std::vector<double>& times) {
-    std::ofstream file(path);
-    for (double t: times)
-        file << t << '\n';
-}
-
-int main(int argsc, char** argsv) {
-    if (argsc <= 1) {
-        std::println("Specify [Matrix Width] [Batch Size = 1000] [Num Trail = 1000]");
-        return 0;
+    for (auto _ : state) {
+        auto result = a.multiply(b, implementation);
+        benchmark::DoNotOptimize(result);
+        benchmark::ClobberMemory();
     }
 
-    const int matrix_width = std::stoi(argsv[1]);
-    const int batch_size   = argsc > 2 ? std::stoi(argsv[2]) : 1'000;
-    const int num_trail    = argsc > 3 ? std::stoi(argsv[3]) : 1'000;
-
-    run_naive_experiment(matrix_width);
-    auto naive_timings = run_trail(
-        [matrix_width]() { run_naive_experiment(matrix_width); }, 
-        batch_size, 
-        num_trail
-    );
-
-    save_runtimes(
-        std::format("mat{}_naive_{}x{}.txt", matrix_width, batch_size, num_trail),
-        naive_timings
-    );
-
-    run_simd_experiment(matrix_width);
-    auto simd_timings = run_trail(
-        [matrix_width]() { run_simd_experiment(matrix_width); }, 
-        batch_size, 
-        num_trail
-    );
-
-    save_runtimes(
-        std::format("mat{}_simd_{}x{}.txt", matrix_width, batch_size, num_trail),
-        simd_timings
+    double ops = 2.0 * std::pow(N, 3);
+    
+    state.counters["GOps"] = benchmark::Counter(
+        ops, 
+        benchmark::Counter::kIsRate,
+        benchmark::Counter::kIs1000
     );
     
-    return 0;
+    double bytes = 3.0 * std::pow(N, 2) * sizeof(std::int32_t);
+    state.counters["Bandwidth"] = benchmark::Counter(
+        bytes, 
+        benchmark::Counter::kIsRate | benchmark::Counter::kAvgThreads,
+        benchmark::Counter::kIs1000
+    );
 }
 
+template <std::size_t N>
+static void BM_Naive(benchmark::State& state) {
+    RunBenchmark<N>(state, Impl::NAIVE);
+}
+
+template <std::size_t N>
+static void BM_Transposed(benchmark::State& state) {
+    RunBenchmark<N>(state, Impl::TRANSPOSED);
+}
+
+template <std::size_t N>
+static void BM_Tiling(benchmark::State& state) {
+    RunBenchmark<N>(state, Impl::TILING);
+}
+
+#define REGISTER_SIZE(N) \
+    BENCHMARK(BM_Naive<N>)->Name("Naive/" #N); \
+    BENCHMARK(BM_Transposed<N>)->Name("Tranposed/" #N); \
+    BENCHMARK(BM_Tiling<N>)->Name("Tiling/" #N);
+
+REGISTER_SIZE(4);
+REGISTER_SIZE(8);
+REGISTER_SIZE(16);
+REGISTER_SIZE(32);
+REGISTER_SIZE(64);
+REGISTER_SIZE(128);
+
+BENCHMARK_MAIN();
