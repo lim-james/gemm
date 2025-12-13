@@ -71,7 +71,7 @@ public:
     ) const {
         switch (implementation) {
         case Impl::NAIVE:       return multiply_naive(other);
-        case Impl::TRANSPOSED:  return multiply_naive(other);
+        case Impl::TRANSPOSED:  return multiply_transposed(other);
         case Impl::SIMD:        return multiply_naive(other);
         case Impl::MICROKERNEL: return multiply_naive(other);
         case Impl::TILING:      return multiply_tiling(other);
@@ -180,6 +180,24 @@ private:
 
         return product;
     }
+
+    SquareMatrix multiply_transposed(const SquareMatrix& other) const {
+        SquareMatrix product;
+
+        for (std::size_t y = 0; y < N; ++y) {
+            for (std::size_t x = 0; x < N; ++x) {
+                product.matrix_[getIndex(x,y)] = 0;
+                for (std::size_t k = 0; k < N; ++k) {
+                    product.matrix_[getIndex(x,y)] += matrix_[getIndex(k,y)] * other.transposed_[getIndex(k,x)];
+                }
+            }
+        }
+
+        return product;
+    }
+
+    SquareMatrix multiply_simd(const SquareMatrix& other) const {}
+    SquareMatrix multiply_microkernel(const SquareMatrix& other) const {}
 
     SquareMatrix multiply_tiling(const SquareMatrix& other) const {
         SquareMatrix product{};
