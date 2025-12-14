@@ -4,7 +4,7 @@ project(GEMM LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-add_compile_options(-g -fno-omit-frame-pointer)
+add_compile_options(-Wno-maybe-uninitialized)
 
 if(NOT CMAKE_BUILD_TYPE)
     message(STATUS "No build type selected, defaulting to Release (-O3)")
@@ -12,7 +12,7 @@ if(NOT CMAKE_BUILD_TYPE)
 endif()
 
 if(CMAKE_BUILD_TYPE STREQUAL "Release")
-    add_compile_options(-O3 -march=native)
+    add_compile_options(-O3)
 endif()
 
 add_library(gemm INTERFACE)
@@ -28,7 +28,7 @@ FetchContent_Declare(
 set(BENCHMARK_ENABLE_TESTING OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(googlebenchmark)
 
-
+set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} -ffile-prefix-map=${CMAKE_SOURCE_DIR}=${CMAKE_SOURCE_DIR}")
 add_executable(gemm_benchmark apps/gemm_benchmark.cpp)
 target_link_libraries(gemm_benchmark PRIVATE 
     gemm
