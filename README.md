@@ -11,6 +11,8 @@ cpp26 documentations and experimental features.
 
 # Benchmark Results
 
+![GOps against size](img/benchmark_graph_GOps.png)
+
 The following tables present the performance metrics for different algorithms across various problem sizes.
 
 **Legend:**
