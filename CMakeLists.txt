@@ -4,7 +4,7 @@ project(GEMM LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-add_compile_options(-Wno-maybe-uninitialized)
+add_compile_options(-g -Wno-maybe-uninitialized)
 
 if(NOT CMAKE_BUILD_TYPE)
     message(STATUS "No build type selected, defaulting to Release (-O3)")
