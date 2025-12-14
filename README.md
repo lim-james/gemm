@@ -11,14 +11,14 @@ cpp26 documentations and experimental features.
 
 # Benchmark Results
 
-![GOps against size](img/benchmark_graph_GOps.png)
-
 The following tables present the performance metrics for different algorithms across various problem sizes.
 
 **Legend:**
 * **k, M, G:** Kilo ($10^3$), Mega ($10^6$), Giga ($10^9$).
 * **Scaling (x):** The value in parentheses compares the algorithm's performance to the **Naive** implementation.
     * For **GOps** and **Bandwidth**, this is **Throughput Improvement** (Algo / Naive). Values $> 1.0$x indicate higher throughput.
+
+![GOps against size](img/benchmark_graph_GOps.png)
 
 #### GOps (Billions of Operations per Second)
 
