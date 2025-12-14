@@ -57,6 +57,14 @@ public:
         return matrix_[getIndex(x, y)];
     }
 
+    const T* data() const {
+        return matrix_.data();
+    }
+
+    const T* data_transposed() const {
+        return transposed_.data();
+    }
+
     void print() const {
         for (std::size_t y = 0; y < N; ++y) {
             for (std::size_t x = 0; x < N; ++x) {
