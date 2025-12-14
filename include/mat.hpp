@@ -1,6 +1,6 @@
 #pragma once
 
-#include <array>
+#include <vector>
 #include <random>
 #include <print>
 #include <type_traits>
@@ -17,8 +17,8 @@ private:
 
     using simd_t = stdx::native_simd<T>;
 
-    std::array<T, N*N> matrix_;
-    std::array<T, N*N> transposed_;
+    std::vector<T> matrix_;
+    std::vector<T> transposed_;
 
     constexpr static inline std::size_t getIndex(std::size_t x, std::size_t y) {
         return y * N + x;
@@ -31,7 +31,7 @@ public:
         thread_local std::mt19937 gen(rd()); 
         std::uniform_int_distribution<> distrib(lower_bound, upper_bound); 
 
-        SquareMatrix random_matrix;
+        SquareMatrix random_matrix{};
         for (std::size_t i = 0; i < N*N; ++i) 
             random_matrix.matrix_[i] = distrib(gen);
 
@@ -41,14 +41,15 @@ public:
     }
 
     constexpr SquareMatrix()
-        : matrix_{0}
-        , transposed_{0} {}
+        : matrix_(N*N)
+        , transposed_(N*N) {}
 
     template<typename... Args>
         requires(sizeof...(Args) == N*N && 
                  std::conjunction_v<std::is_nothrow_convertible<Args, T>...>) 
     constexpr SquareMatrix(Args&&... args) 
-        : matrix_{static_cast<T>(args)...} {
+        : matrix_{static_cast<T>(args)...}
+        , transposed_(N*N) {
         compute_transpose();
     }
 
