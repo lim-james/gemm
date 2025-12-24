@@ -170,7 +170,7 @@ void perf_size() {
 int main() {
     std::println("SIZE | METHOD     | {:11} | {:11} | {:11} | {:11}", "L1D MISSES", "LLC MISSES", "INSTR", "CPU CYCLES");
     for (int i{}; i < 100; ++i) {
-        perf_size<4>(); 
+        // perf_size<4>(); 
         perf_size<8>(); 
         perf_size<16>(); 
         perf_size<32>(); 

@@ -4,7 +4,7 @@ project(GEMM LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-add_compile_options(-g -Wno-maybe-uninitialized)
+add_compile_options(-Wno-maybe-uninitialized)
 
 if(NOT CMAKE_BUILD_TYPE)
     message(STATUS "No build type selected, defaulting to Release (-O3)")
@@ -29,20 +29,46 @@ set(BENCHMARK_ENABLE_TESTING OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(googlebenchmark)
 
 set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} -ffile-prefix-map=${CMAKE_SOURCE_DIR}=${CMAKE_SOURCE_DIR}")
-add_executable(gemm_benchmark apps/gemm_benchmark.cpp)
-target_link_libraries(gemm_benchmark PRIVATE 
+
+
+
+# ---------- BENCHMARK ----------
+add_executable(gemm_benchmark_no_avx apps/gemm_benchmark.cpp)
+target_link_libraries(gemm_benchmark_no_avx PRIVATE 
     gemm
     benchmark::benchmark 
     benchmark::benchmark_main
 )
 
+add_executable(gemm_benchmark_avx2 apps/gemm_benchmark.cpp)
+target_link_libraries(gemm_benchmark_avx2 PRIVATE 
+    gemm
+    benchmark::benchmark 
+    benchmark::benchmark_main
+)
+target_compile_options(gemm_benchmark_avx2 PRIVATE -mavx2)
+
+
+
+# ---------- CORRECTNESS ----------
+
 add_executable(validate_correctness apps/validate_correctness.cpp)
 target_link_libraries(validate_correctness PRIVATE gemm)
 
-add_executable(perf_driver apps/perf_driver.cpp)
-target_link_libraries(perf_driver PRIVATE gemm)
 
-# ---------- Tests ----------
+
+# ---------- PERF DRIVER ----------
+
+add_executable(perf_driver_no_avx apps/perf_driver.cpp)
+target_link_libraries(perf_driver_no_avx PRIVATE gemm)
+
+add_executable(perf_driver_avx2 apps/perf_driver.cpp)
+target_link_libraries(perf_driver_avx2 PRIVATE gemm)
+target_compile_options(perf_driver_avx2 PRIVATE -mavx2)
+
+
+
+# ---------- TESTS ----------
 enable_testing()
 
 add_executable(gemm_tests tests/test_mat.cpp)

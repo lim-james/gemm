@@ -7,52 +7,53 @@
 #include <cassert>
 #include <cstdint>
 
-template<std::size_t N>
+template<typename T, std::size_t N>
 bool validate_matrix_multiplication(
-    std::int32_t lower_bound, 
-    std::int32_t upper_bound,
+    T lower_bound, 
+    T upper_bound,
     Impl implementation
 ) {
-    auto a = SquareMatrix<std::int32_t, N>::make_random(lower_bound, upper_bound);
-    auto b = SquareMatrix<std::int32_t, N>::make_random(lower_bound, upper_bound);
+    auto a = SquareMatrix<T, N>::make_random(lower_bound, upper_bound);
+    auto b = SquareMatrix<T, N>::make_random(lower_bound, upper_bound);
     
-    SquareMatrix<std::int32_t, N> out1{}; a.multiply(b, out1, Impl::NAIVE);
-    SquareMatrix<std::int32_t, N> out2{}; a.multiply(b, out2, implementation);
+    SquareMatrix<T, N> out1{}; a.multiply(b, out1, Impl::NAIVE);
+    SquareMatrix<T, N> out2{}; a.multiply(b, out2, implementation);
 
     return out1 == out2;
 }
 
-template<std::size_t START_SIZE, std::size_t END_SIZE>
+template<typename T, std::size_t START_SIZE, std::size_t END_SIZE>
 std::size_t validate_range_of_matrices(
-    std::int32_t lower_bound, 
-    std::int32_t upper_bound,
+    T lower_bound, 
+    T upper_bound,
     Impl implementation
 ) {
     std::size_t correct_count = static_cast<std::size_t>(
-        validate_matrix_multiplication<START_SIZE>(lower_bound, upper_bound, implementation)
+        validate_matrix_multiplication<T, START_SIZE>(lower_bound, upper_bound, implementation)
     );
 
     if constexpr (START_SIZE < END_SIZE)
-        correct_count += validate_range_of_matrices<START_SIZE + 4, END_SIZE>(
+        correct_count += validate_range_of_matrices<T, START_SIZE + 4, END_SIZE>(
             lower_bound, upper_bound, implementation
         );
 
     return correct_count;
 }
 
+template<typename T>
 std::size_t validate_implementation(
     std::size_t  num_runs,
-    std::int32_t lower_bound, 
-    std::int32_t upper_bound,
+    T lower_bound, 
+    T upper_bound,
     Impl implementation
 ) {
     std::size_t correct_count = 0;
     
     for (std::size_t i = 0; i < num_runs; ++i) {
         correct_count += (
-            validate_range_of_matrices<4,   32> (lower_bound, upper_bound, implementation) +
-            validate_range_of_matrices<36,  128>(lower_bound, upper_bound, implementation) +
-            validate_range_of_matrices<132, 256>(lower_bound, upper_bound, implementation)
+            validate_range_of_matrices<T, 4,   32> (lower_bound, upper_bound, implementation) +
+            validate_range_of_matrices<T, 36,  128>(lower_bound, upper_bound, implementation) +
+            validate_range_of_matrices<T, 132, 256>(lower_bound, upper_bound, implementation)
         );
     }
 

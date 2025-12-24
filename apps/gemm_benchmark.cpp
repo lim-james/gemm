@@ -37,7 +37,7 @@ void RunBenchmark(benchmark::State& state) {
     BENCHMARK(RunBenchmark<N, Impl::TILING>)    ->Name("Tiling/" #N);
 
 
-REGISTER_SIZE(4);
+// REGISTER_SIZE(4);
 REGISTER_SIZE(8);
 REGISTER_SIZE(16);
 REGISTER_SIZE(32);

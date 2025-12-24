@@ -1,5 +1,8 @@
 #pragma once
 
+#include "aligned_allocator.hpp"
+
+#include <experimental/bits/simd.h>
 #include <vector>
 #include <random>
 #include <print>
@@ -7,7 +10,7 @@
 
 #include <experimental/simd>
 
-namespace stdx = std::experimental;
+namespace stdx = std::experimental::parallelism_v2;
 
 enum class Impl: char { NAIVE, TRANSPOSED, SIMD, MICROKERNEL, TILING };
 
@@ -15,10 +18,15 @@ template<typename T, std::size_t N> requires (N%4==0)
 class alignas(stdx::memory_alignment_v<stdx::native_simd<T>>) SquareMatrix {
 private:
 
-    using simd_t = stdx::native_simd<T>;
 
-    std::vector<T> matrix_;
-    std::vector<T> transposed_;
+
+    using simd_t = stdx::native_simd<T>;
+    static constexpr std::size_t ALIGN = stdx::memory_alignment_v<simd_t>;
+    //static constexpr std::size_t ALIGN = std::experimental::parallelism_v2<simd_t>;
+    using aligned_vector = std::vector<T, aligned_allocator<T, ALIGN>>;
+
+    aligned_vector matrix_;
+    aligned_vector transposed_;
 
     constexpr static inline std::size_t getIndex(std::size_t x, std::size_t y) {
         return y * N + x;
@@ -155,25 +163,25 @@ private:
             c30 += a3 * b0; c31 += a3 * b1; c32 += a3 * b2; c33 += a3 * b3;
         }
 
-        C0[0] += c00[0] + c00[1] + c00[2] + c00[3];
-        C0[1] += c01[0] + c01[1] + c01[2] + c01[3];
-        C0[2] += c02[0] + c02[1] + c02[2] + c02[3];
-        C0[3] += c03[0] + c03[1] + c03[2] + c03[3];
+        C0[0] += stdx::reduce(c00);
+        C0[1] += stdx::reduce(c01);
+        C0[2] += stdx::reduce(c02);
+        C0[3] += stdx::reduce(c03);
 
-        C1[0] += c10[0] + c10[1] + c10[2] + c10[3];
-        C1[1] += c11[0] + c11[1] + c11[2] + c11[3];
-        C1[2] += c12[0] + c12[1] + c12[2] + c12[3];
-        C1[3] += c13[0] + c13[1] + c13[2] + c13[3];
+        C1[0] += stdx::reduce(c10);
+        C1[1] += stdx::reduce(c11);
+        C1[2] += stdx::reduce(c12);
+        C1[3] += stdx::reduce(c13);
 
-        C2[0] += c20[0] + c20[1] + c20[2] + c20[3];
-        C2[1] += c21[0] + c21[1] + c21[2] + c21[3];
-        C2[2] += c22[0] + c22[1] + c22[2] + c22[3];
-        C2[3] += c23[0] + c23[1] + c23[2] + c23[3];
+        C2[0] += stdx::reduce(c20);
+        C2[1] += stdx::reduce(c21);
+        C2[2] += stdx::reduce(c22);
+        C2[3] += stdx::reduce(c23);
 
-        C3[0] += c30[0] + c30[1] + c30[2] + c30[3];
-        C3[1] += c31[0] + c31[1] + c31[2] + c31[3];
-        C3[2] += c32[0] + c32[1] + c32[2] + c32[3];
-        C3[3] += c33[0] + c33[1] + c33[2] + c33[3];
+        C3[0] += stdx::reduce(c30);
+        C3[1] += stdx::reduce(c31);
+        C3[2] += stdx::reduce(c32);
+        C3[3] += stdx::reduce(c33);
     }
 
     constexpr void multiply_naive(const SquareMatrix& other, SquareMatrix& out) const {
@@ -206,7 +214,7 @@ private:
                 auto b_col = other.transposed_.data() + x * N;
 
                 simd_t vsum{};
-                for (std::size_t k{}; k + simd_t::size() <= N; k += simd_t::size()) {
+                for (std::size_t k{}; k < N; k += simd_t::size()) {
                     simd_t va;
                     simd_t vb;
 
@@ -215,10 +223,11 @@ private:
                     vsum += va * vb;
                 }
 
-                out.matrix_[getIndex(x,y)] = vsum[0] + vsum[1] + vsum[2] + vsum[3];
+                out.matrix_[getIndex(x,y)] = stdx::reduce(vsum);
             }
         }
     }
+
     void multiply_microkernel(const SquareMatrix& other, SquareMatrix& out) const {}
 
     void multiply_tiling(const SquareMatrix& other, SquareMatrix& out) const {

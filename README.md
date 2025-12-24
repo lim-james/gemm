@@ -18,6 +18,45 @@ The following tables present the performance metrics for different algorithms ac
 * **Scaling (x):** The value in parentheses compares the algorithm's performance to the **Naive** implementation.
     * For **GOps** and **Bandwidth**, this is **Throughput Improvement** (Algo / Naive). Values $> 1.0$x indicate higher throughput.
 
+## SSE2 vs AVX2 comparison
+
+#### 1. Execution Cycles (Lower is Better)
+
+
+| Matrix Size () | Method | SSE2 Cycles | AVX2 Cycles | Speedup |
+| --- | --- | --- | --- | --- |
+| **256** | SIMD | 12,392,340 | 4,325,296 | **2.86x** |
+| **512** | SIMD | 119,912,500 | 34,627,020 | **3.46x** |
+| **1024** | SIMD | 1,353,563,000 | 750,581,500 | **1.80x** |
+| **2048** | SIMD | 18,271,790,000 | 13,429,540,000 | **1.36x** |
+| **2048** | **TILING** | 7,979,022,000 | 4,565,528,000 | **1.75x** |
+
+
+#### 2. Instruction Retirement (Efficiency)
+
+
+| Matrix Size () | Method | SSE2 Instructions | AVX2 Instructions | Reduction Ratio |
+| --- | --- | --- | --- | --- |
+| **256** | SIMD | 59,574,530 | 13,633,790 | **4.37x fewer** |
+| **512** | SIMD | 473,173,800 | 104,862,000 | **4.51x fewer** |
+| **1024** | SIMD | 3,771,736,000 | 822,091,200 | **4.58x fewer** |
+| **2048** | SIMD | 30,119,320,000 | 6,509,578,000 | **4.62x fewer** |
+
+
+#### 3. Pipeline & Cache Telemetry
+
+
+| Matrix Size () | Variant | IPC (Avg) | L1D Misses | LLC Misses | Bottleneck |
+| --- | --- | --- | --- | --- | --- |
+| **512** | SSE2 SIMD | 3.95 | 8,495,677 | 208,755 | Compute |
+| **512** | AVX2 SIMD | 3.03 | 8,495,061 | 205,243 | Compute |
+| **2048** | SSE2 SIMD | 1.65 | 551,055,106 | 14,060,395 | Memory Latency |
+| **2048** | AVX2 SIMD | **0.48** | 549,728,274 | 13,891,965 | **DRAM Bandwidth** |
+| **2048** | **AVX2 TILING** | **1.63** | 292,034,791 | 29,730,258 | Cache Efficient |
+
+
+## Individual results (SSE2)
+
 ![GOps against size](img/benchmark_graph_GOps.png)
 
 #### GOps (Billions of Operations per Second)
