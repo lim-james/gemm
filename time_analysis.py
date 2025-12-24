@@ -45,7 +45,7 @@ plt.xscale('log', base=2)
 plt.grid(True, which="both", linestyle="--", alpha=0.5)
 plt.minorticks_on()
 
-output_file = "benchmark_graph.png"
+output_file = f"benchmark_graph_{y_axis}.png"
 plt.tight_layout()
 plt.savefig(output_file, dpi=300)
 print(f"Graph saved to {output_file}")
