@@ -20,7 +20,7 @@ The following tables present the performance metrics for different algorithms ac
 
 ## SSE2 vs AVX2 comparison
 
-![GOps AVX2](img/compare_GOps.png)
+![GOps AVX2](img/comparison_GOps.png)
 
 #### 1. Execution Cycles (Lower is Better)
 
