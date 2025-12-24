@@ -20,8 +20,7 @@ The following tables present the performance metrics for different algorithms ac
 
 ## SSE2 vs AVX2 comparison
 
-![GOps SSE2](img/benchmark_graph_GOps_sse2.png)
-![GOps AVX2](img/benchmark_graph_GOps_avx2.png)
+![GOps AVX2](img/compare_GOps.png)
 
 #### 1. Execution Cycles (Lower is Better)
 
@@ -59,6 +58,8 @@ The following tables present the performance metrics for different algorithms ac
 
 
 ## Individual results (SSE2)
+
+![GOps SSE2](img/benchmark_graph_GOps_sse2.png)
 
 #### GOps (Billions of Operations per Second)
 
