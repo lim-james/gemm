@@ -12,14 +12,21 @@
 
 namespace stdx = std::experimental::parallelism_v2;
 
-enum class Impl: char { NAIVE, TRANSPOSED, SIMD, MICROKERNEL, TILING };
+enum class Impl: char { 
+    NAIVE, 
+    TRANSPOSED, TRANSPOSED_SIMD, 
+    TILED,      TILED_SIMD
+};
 
 template<typename T, std::size_t N> requires (N%4==0)
 class SquareMatrix {
 private:
 
-    using simd_t = stdx::fixed_size_simd<T, 4>;
+    static constexpr std::size_t SIMD_SIZE = 4;
+
+    using simd_t = stdx::fixed_size_simd<T, SIMD_SIZE>;
     static constexpr std::size_t ALIGN = stdx::memory_alignment_v<simd_t>;
+
     using aligned_vector = std::vector<T, aligned_allocator<T, ALIGN>>;
 
     aligned_vector matrix_;
@@ -73,7 +80,7 @@ public:
     void print() const {
         for (std::size_t y = 0; y < N; ++y) {
             for (std::size_t x = 0; x < N; ++x) {
-                std::print("{:8} ", matrix_[getIndex(x,y)]); 
+                std::print("{:5} ", matrix_[getIndex(x,y)]); 
             }
             std::println();
         }
@@ -82,14 +89,14 @@ public:
     constexpr void multiply(
         const SquareMatrix& other, 
         SquareMatrix& out, 
-        Impl implementation = Impl::TILING
+        Impl implementation = Impl::TILED_SIMD
     ) const {
         switch (implementation) {
-        case Impl::NAIVE:       multiply_naive(other, out); return;
-        case Impl::TRANSPOSED:  multiply_transposed(other, out); return;
-        case Impl::SIMD:        multiply_simd(other, out); return;
-        case Impl::MICROKERNEL: multiply_naive(other, out); return;
-        case Impl::TILING:      multiply_tiling(other, out); return;
+        case Impl::NAIVE:           multiply_naive(other, out); return;
+        case Impl::TRANSPOSED:      multiply_transposed(other, out); return;
+        case Impl::TRANSPOSED_SIMD: multiply_simd(other, out); return;
+        case Impl::TILED:           multiply_tiled(other, out); return;
+        case Impl::TILED_SIMD:      multiply_tiled_simd(other, out); return;
         default: return;
         }
     }
@@ -103,78 +110,9 @@ public:
 
 private:
 
-    constexpr void compute_transpose() {
-        for (std::size_t y = 0; y < N; ++y) {
-            for (std::size_t x = 0; x <= y; ++x) {
-                transposed_[getIndex(x,y)] = matrix_[getIndex(y,x)];
-                transposed_[getIndex(y,x)] = matrix_[getIndex(x,y)];
-            }
-        }
-    }
-
-    constexpr void pack_tiles(
-        const T* R0, const T* R1, const T* R2, const T* R3,
-        T* pack, std::size_t K_blk
-    ) const {
-        for (std::size_t k = 0; k < K_blk; ++k) {
-            pack[0*K_blk + k] = R0[k];
-            pack[1*K_blk + k] = R1[k];
-            pack[2*K_blk + k] = R2[k];
-            pack[3*K_blk + k] = R3[k];
-        }
-    }
-
-    void microkernel_4x4(
-        const T* A_pack,
-        const T* B_pack,
-        T* C0, T* C1, T* C2, T* C3,
-        std::size_t K_blk
-    ) const {
-        simd_t c00(0), c01(0), c02(0), c03(0);
-        simd_t c10(0), c11(0), c12(0), c13(0);
-        simd_t c20(0), c21(0), c22(0), c23(0);
-        simd_t c30(0), c31(0), c32(0), c33(0);
-
-        const std::size_t K_simd = (K_blk / simd_t::size()) * simd_t::size();
-        for (std::size_t k = 0; k < K_simd; k += simd_t::size()) {
-            simd_t a0, a1, a2, a3;
-            a0.copy_from(A_pack + 0*K_blk + k, stdx::vector_aligned);
-            a1.copy_from(A_pack + 1*K_blk + k, stdx::vector_aligned);
-            a2.copy_from(A_pack + 2*K_blk + k, stdx::vector_aligned);
-            a3.copy_from(A_pack + 3*K_blk + k, stdx::vector_aligned);
-
-            simd_t b0, b1, b2, b3;
-            b0.copy_from(B_pack + 0*K_blk + k, stdx::vector_aligned);
-            b1.copy_from(B_pack + 1*K_blk + k, stdx::vector_aligned);
-            b2.copy_from(B_pack + 2*K_blk + k, stdx::vector_aligned);
-            b3.copy_from(B_pack + 3*K_blk + k, stdx::vector_aligned);
-
-            c00 += a0 * b0; c01 += a0 * b1; c02 += a0 * b2; c03 += a0 * b3;
-            c10 += a1 * b0; c11 += a1 * b1; c12 += a1 * b2; c13 += a1 * b3;
-            c20 += a2 * b0; c21 += a2 * b1; c22 += a2 * b2; c23 += a2 * b3;
-            c30 += a3 * b0; c31 += a3 * b1; c32 += a3 * b2; c33 += a3 * b3;
-        }
-
-        C0[0] += stdx::reduce(c00);
-        C0[1] += stdx::reduce(c01);
-        C0[2] += stdx::reduce(c02);
-        C0[3] += stdx::reduce(c03);
-
-        C1[0] += stdx::reduce(c10);
-        C1[1] += stdx::reduce(c11);
-        C1[2] += stdx::reduce(c12);
-        C1[3] += stdx::reduce(c13);
-
-        C2[0] += stdx::reduce(c20);
-        C2[1] += stdx::reduce(c21);
-        C2[2] += stdx::reduce(c22);
-        C2[3] += stdx::reduce(c23);
-
-        C3[0] += stdx::reduce(c30);
-        C3[1] += stdx::reduce(c31);
-        C3[2] += stdx::reduce(c32);
-        C3[3] += stdx::reduce(c33);
-    }
+    // =================================================================
+    // SECTION: NAIVE
+    // =================================================================
 
     constexpr void multiply_naive(const SquareMatrix& other, SquareMatrix& out) const {
         for (std::size_t y = 0; y < N; ++y) {
@@ -183,6 +121,19 @@ private:
                 for (std::size_t k = 0; k < N; ++k) {
                     out.matrix_[getIndex(x,y)] += matrix_[getIndex(k,y)] * other.matrix_[getIndex(x,k)];
                 }
+            }
+        }
+    }
+
+    // =================================================================
+    // SECTION: TRANSPOSED
+    // =================================================================
+
+    constexpr void compute_transpose() {
+        for (std::size_t y = 0; y < N; ++y) {
+            for (std::size_t x = 0; x <= y; ++x) {
+                transposed_[getIndex(x,y)] = matrix_[getIndex(y,x)];
+                transposed_[getIndex(y,x)] = matrix_[getIndex(x,y)];
             }
         }
     }
@@ -197,6 +148,10 @@ private:
             }
         }
     }
+
+    // =================================================================
+    // SECTION: TRANSPOSED + SIMD
+    // =================================================================
 
     void multiply_simd(const SquareMatrix& other, SquareMatrix& out) const {
         for (std::size_t y = 0; y < N; ++y) {
@@ -220,62 +175,144 @@ private:
         }
     }
 
-    void multiply_microkernel(const SquareMatrix& other, SquareMatrix& out) const {}
+    // =================================================================
+    // SECTION: TILED
+    // =================================================================
 
-    void multiply_tiling(const SquareMatrix& other, SquareMatrix& out) const {
-        constexpr std::size_t TILE_SIZE = 32;
-        constexpr std::size_t NR = 4;
+    template<std::size_t TILE_SIZE>
+    void pack_tile_linearly(
+        const T* mat,
+        std::size_t row_offset,
+        std::size_t col_offset,
+        std::size_t row_limit,
+        std::size_t col_limit,
+        std::array<T, TILE_SIZE * TILE_SIZE>& pack
+    ) const {
+        pack.fill(0);
+        for (std::size_t row{}; row < row_limit; ++row) {
+            for (std::size_t col{}; col < col_limit; ++col) {
+                const std::size_t mat_idx  = getIndex(col + col_offset, row + row_offset);
+                const std::size_t pack_idx = row * TILE_SIZE + col;
+                pack[pack_idx] = mat[mat_idx];
+            }
+        }
+    }
 
-        const T* A = matrix_.data();
-        const T* BT = other.transposed_.data();
-        T* C = out.matrix_.data();
-
-        alignas(64) T A_pack[NR * TILE_SIZE];
-        alignas(64) T B_pack[NR * TILE_SIZE];
-
-        for (std::size_t ii = 0; ii < N; ii += TILE_SIZE) {
-            for (std::size_t jj = 0; jj < N; jj += TILE_SIZE) {
-                for (std::size_t kk = 0; kk < N; kk += TILE_SIZE) {
-                    
-                    const std::size_t i_end = std::min(ii + TILE_SIZE, N);
-                    const std::size_t j_end = std::min(jj + TILE_SIZE, N);
-                    const std::size_t k_end = std::min(kk + TILE_SIZE, N);
-
-                    const std::size_t K_blk  = k_end - kk;
-
-                    for (std::size_t i = ii; i < i_end; i += NR) {
-
-                        const T* A0 = A + (i+0)*N + kk;
-                        const T* A1 = A + (i+1)*N + kk;
-                        const T* A2 = A + (i+2)*N + kk;
-                        const T* A3 = A + (i+3)*N + kk;
-
-                        pack_tiles(A0, A1, A2, A3, A_pack, K_blk);
-
-                        for (std::size_t j = jj; j < j_end; j += NR) {
-                            const T* B0 = BT + (j+0)*N + kk;
-                            const T* B1 = BT + (j+1)*N + kk;
-                            const T* B2 = BT + (j+2)*N + kk;
-                            const T* B3 = BT + (j+3)*N + kk;
-
-                            pack_tiles(B0, B1, B2, B3, B_pack, K_blk);
-                                
-                            T* C0 = C + (i+0)*N + j;
-                            T* C1 = C + (i+1)*N + j;
-                            T* C2 = C + (i+2)*N + j;
-                            T* C3 = C + (i+3)*N + j;
-
-                            microkernel_4x4(
-                                A_pack, B_pack, 
-                                C0, C1, C2, C3,
-                                K_blk
-                            );
-
-                        }
-                    }
+    template<std::size_t TILE_SIZE>
+    void microkernel(
+        const std::array<T, TILE_SIZE * TILE_SIZE>& a_pack,
+        const std::array<T, TILE_SIZE * TILE_SIZE>& bt_pack,
+        T* C,
+        std::size_t row_offset,
+        std::size_t col_offset,
+        std::size_t row_limit,
+        std::size_t col_limit,
+        std::size_t k_blk
+    ) const {
+        for (std::size_t row{}; row < row_limit; ++row) {
+            for (std::size_t col{}; col < col_limit; ++col) {
+                const std::size_t c_idx = getIndex(col + col_offset, row + row_offset);
+                for (std::size_t k{}; k < k_blk; ++k) {
+                    C[c_idx] += a_pack[row * TILE_SIZE + k] * bt_pack[col * TILE_SIZE + k];
                 }
             }
         }
     }
+
+    void multiply_tiled(const SquareMatrix& other, SquareMatrix& out) const {
+        static constexpr std::size_t TILE_SIZE = 32;
+
+        const T * a_ptr = matrix_.data();
+        const T * bt_ptr = other.transposed_.data();
+        T * c_ptr = out.matrix_.data();
+        
+        std::array<T, TILE_SIZE * TILE_SIZE> a_pack;
+        std::array<T, TILE_SIZE * TILE_SIZE> bt_pack;
+
+        for (std::size_t i{}; i < N; i += TILE_SIZE) {
+            const std::size_t i_blk = std::min(N - i, TILE_SIZE);
+            for (std::size_t k{}; k < N; k += TILE_SIZE) {
+                const std::size_t k_blk = std::min(N - k, TILE_SIZE);
+                pack_tile_linearly<TILE_SIZE>(a_ptr, i, k, i_blk, k_blk, a_pack);
+
+                for (std::size_t j{}; j < N; j += TILE_SIZE) {
+                    const std::size_t j_blk = std::min(N - j, TILE_SIZE);
+                    pack_tile_linearly<TILE_SIZE>(bt_ptr, j, k, j_blk, k_blk, bt_pack);
+                    microkernel<TILE_SIZE>(a_pack, bt_pack, c_ptr, i, j, i_blk, j_blk, k_blk);
+                }
+            }
+        }
+    }
+
+    // =================================================================
+    // SECTION: TILED + SIMD
+    // =================================================================
+
+    template<std::size_t TILE_SIZE>
+    void microkernel_simd(
+        const std::array<T, TILE_SIZE * TILE_SIZE>& a_pack,
+        const std::array<T, TILE_SIZE * TILE_SIZE>& b_pack,
+        T* C,
+        std::size_t row_offset,
+        std::size_t col_offset,
+        std::size_t row_limit,
+        std::size_t col_limit,
+        std::size_t k_limit
+    ) const {
+        std::array<simd_t, SIMD_SIZE> C_rows; 
+
+        for (std::size_t row{}; row < row_limit; row += SIMD_SIZE) {
+            for (std::size_t col{}; col < col_limit; col += SIMD_SIZE) {
+                for (std::size_t r{}; r < SIMD_SIZE; ++r) 
+                    C_rows[r].copy_from(
+                        C + getIndex(col + col_offset, row + row_offset + r), 
+                        stdx::vector_aligned
+                    );
+
+                for (std::size_t k{}; k < k_limit; ++k) {
+                    simd_t b;
+                    b.copy_from(&b_pack[k * TILE_SIZE + col], stdx::vector_aligned);
+
+                    for (std::size_t r{}; r < SIMD_SIZE; ++r) {
+                        const std::size_t pack_idx = (row + r) * TILE_SIZE + k;
+                        C_rows[r] += simd_t(a_pack[pack_idx]) * b;
+                    }
+                }
+
+                for (std::size_t r{}; r < SIMD_SIZE; ++r) 
+                    C_rows[r].copy_to(
+                        C + getIndex(col + col_offset, row + row_offset + r), 
+                        stdx::vector_aligned
+                    );
+            }
+        }
+    }
+
+    void multiply_tiled_simd(const SquareMatrix& other, SquareMatrix& out) const {
+        static constexpr std::size_t TILE_SIZE = 32;
+        static constexpr std::size_t NR = SIMD_SIZE;
+
+        const T * a_ptr = matrix_.data();
+        const T * b_ptr = other.matrix_.data();
+        T * c_ptr = out.matrix_.data();
+        
+        alignas(64) std::array<T, TILE_SIZE * TILE_SIZE> a_pack;
+        alignas(64) std::array<T, TILE_SIZE * TILE_SIZE> b_pack;
+
+        for (std::size_t i{}; i < N; i += TILE_SIZE) {
+            const std::size_t i_blk = std::min(N - i, TILE_SIZE);
+            for (std::size_t k{}; k < N; k += TILE_SIZE) {
+                const std::size_t k_blk = std::min(N - k, TILE_SIZE);
+                pack_tile_linearly<TILE_SIZE>(a_ptr, i, k, i_blk, k_blk, a_pack);
+
+                for (std::size_t j{}; j < N; j += TILE_SIZE) {
+                    const std::size_t j_blk = std::min(N - j, TILE_SIZE);
+                    pack_tile_linearly<TILE_SIZE>(b_ptr, k, j, k_blk, j_blk, b_pack);
+                    microkernel_simd<TILE_SIZE>(a_pack, b_pack, c_ptr, i, j, i_blk, j_blk, k_blk);
+                }
+            }
+        }
+    }
+
 };
 
