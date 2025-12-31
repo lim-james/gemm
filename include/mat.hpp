@@ -16,7 +16,7 @@ namespace stdx = std::experimental::parallelism_v2;
 enum class Impl: char { 
     NAIVE, 
     TRANSPOSED, TRANSPOSED_SIMD, 
-    TILED,      TILED_SIMD
+    TILED,      TILED_SIMD,      TILED_PREFETCH
 };
 
 template<typename T, std::size_t N> requires (N%4==0)
@@ -104,6 +104,7 @@ public:
         case Impl::TRANSPOSED_SIMD: multiply_simd(other, out); return;
         case Impl::TILED:           multiply_tiled(other, out); return;
         case Impl::TILED_SIMD:      multiply_tiled_simd(other, out); return;
+        case Impl::TILED_PREFETCH:  multiply_tiled_prefetch(other, out); return;
         default: return;
         }
     }
@@ -307,7 +308,6 @@ private:
 
     void multiply_tiled_simd(const SquareMatrix& other, SquareMatrix& out) const {
         static constexpr std::size_t TILE_SIZE = 32;
-        static constexpr std::size_t NR = SIMD_SIZE;
 
         const T * a_ptr = matrix_.data();
         const T * b_ptr = other.matrix_.data();
@@ -325,6 +325,60 @@ private:
                 for (std::size_t j{}; j < N; j += TILE_SIZE) {
                     const std::size_t j_blk = std::min(N - j, TILE_SIZE);
                     pack_tile_linearly<TILE_SIZE>(b_ptr, k, j, k_blk, j_blk, b_pack);
+                    microkernel_simd<TILE_SIZE>(a_pack, b_pack, c_ptr, i, j, i_blk, j_blk, k_blk);
+                }
+            }
+        }
+    }
+
+    // =================================================================
+    // SECTION: TILED + SIMD + PREFETCHER
+    // =================================================================
+
+    template<std::size_t TILE_SIZE>
+    void pack_tile_linearly_prefetched(
+        const T* mat,
+        std::size_t row_offset,
+        std::size_t col_offset,
+        std::size_t row_limit,
+        std::size_t col_limit,
+        std::array<T, TILE_SIZE * TILE_SIZE>& pack
+    ) const {
+        pack.fill(0);
+        for (std::size_t row{}; row < row_limit; ++row) {
+            for (std::size_t col{}; col < col_limit; ++col) {
+                const std::size_t next_row_index  = getIndex(col + col_offset, row + row_offset + 1);
+                _mm_prefetch((const char*)&mat[next_row_index], _MM_HINT_T0);
+
+                const std::size_t mat_idx  = getIndex(col + col_offset, row + row_offset);
+                const std::size_t pack_idx = row * TILE_SIZE + col;
+                pack[pack_idx] = mat[mat_idx];
+            }
+        }
+    }
+
+    void multiply_tiled_prefetch(const SquareMatrix& other, SquareMatrix& out) const {
+        static constexpr std::size_t TILE_SIZE = 32;
+
+        const T * a_ptr = matrix_.data();
+        const T * b_ptr = other.matrix_.data();
+        T * c_ptr = out.matrix_.data();
+        
+        alignas(64) std::array<T, TILE_SIZE * TILE_SIZE> a_pack;
+        alignas(64) std::array<T, TILE_SIZE * TILE_SIZE> b_pack;
+
+        for (std::size_t i{}; i < N; i += TILE_SIZE) {
+            const std::size_t i_blk = std::min(N - i, TILE_SIZE);
+            for (std::size_t k{}; k < N; k += TILE_SIZE) {
+                const std::size_t k_blk = std::min(N - k, TILE_SIZE);
+                pack_tile_linearly_prefetched<TILE_SIZE>(a_ptr, i, k, i_blk, k_blk, a_pack);
+
+                for (std::size_t j{}; j < N; j += TILE_SIZE) {
+                    const std::size_t next_tile_index = getIndex(k, j + TILE_SIZE);
+                    _mm_prefetch((const char*)&b_ptr[next_tile_index], _MM_HINT_T1);
+
+                    const std::size_t j_blk = std::min(N - j, TILE_SIZE);
+                    pack_tile_linearly_prefetched<TILE_SIZE>(b_ptr, k, j, k_blk, j_blk, b_pack);
                     microkernel_simd<TILE_SIZE>(a_pack, b_pack, c_ptr, i, j, i_blk, j_blk, k_blk);
                 }
             }
