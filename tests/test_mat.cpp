@@ -34,7 +34,7 @@ int main() {
         SquareMatrix<int, 4> B = SquareMatrix<int, 4>::make_random(0, 5);
 
         SquareMatrix<int, 4> C1{}; A.multiply(B, C1, Impl::NAIVE);
-        SquareMatrix<int, 4> C2{}; A.multiply(B, C2, Impl::TILING);
+        SquareMatrix<int, 4> C2{}; A.multiply(B, C2, Impl::TILED);
 
         assert(C1 == C2 && "SIMD must match naive for 4x4");
     }
@@ -46,8 +46,20 @@ int main() {
             SquareMatrix<int, 8> B = SquareMatrix<int, 8>::make_random(0, 9);
 
             SquareMatrix<int, 8> C1{}; A.multiply(B, C1, Impl::NAIVE);
-            SquareMatrix<int, 8> C2{}; A.multiply(B, C2, Impl::TILING);
+            SquareMatrix<int, 8> C2{}; A.multiply(B, C2, Impl::TILED);
             assert(C1 == C2 && "8x8 check failed");
+        }
+    }
+
+    {
+        for (int iter = 0; iter < 10; iter++) {
+            constexpr std::size_t MAT_SIZE = 128;
+            auto A = SquareMatrix<int, MAT_SIZE>::make_random(0, 9);
+            auto B = SquareMatrix<int, MAT_SIZE>::make_random(0, 9);
+
+            SquareMatrix<int, MAT_SIZE> C1{}; A.multiply(B, C1, Impl::NAIVE);
+            SquareMatrix<int, MAT_SIZE> C2{}; A.multiply(B, C2, Impl::TILED);
+            assert(C1 == C2 && "128x128 check failed");
         }
     }
 
