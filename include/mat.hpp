@@ -2,6 +2,7 @@
 
 #include "aligned_allocator.hpp"
 
+#include <array>
 #include <experimental/bits/simd.h>
 #include <vector>
 #include <random>
@@ -21,10 +22,16 @@ enum class Impl: char {
 template<typename T, std::size_t N> requires (N%4==0)
 class SquareMatrix {
 private:
-
+#if defined(__AVX2__)
+    static constexpr std::size_t SIMD_SIZE = 8;
+#elif defined(__SSE2__)
     static constexpr std::size_t SIMD_SIZE = 4;
+#else
+    static constexpr std::size_t SIMD_SIZE = 1; // Scalar fallback
+#endif    
 
     using simd_t = stdx::fixed_size_simd<T, SIMD_SIZE>;
+
     static constexpr std::size_t ALIGN = stdx::memory_alignment_v<simd_t>;
 
     using aligned_vector = std::vector<T, aligned_allocator<T, ALIGN>>;
@@ -248,6 +255,14 @@ private:
     // SECTION: TILED + SIMD
     // =================================================================
 
+    template<std::size_t COUNT, std::size_t I=0>
+    constexpr void unroll(auto&& fn) const {
+        if constexpr (I < COUNT) {
+            fn.template operator()<I>();
+            unroll<COUNT, I + 1>(fn);
+        }
+    }
+
     template<std::size_t TILE_SIZE>
     void microkernel_simd(
         const std::array<T, TILE_SIZE * TILE_SIZE>& a_pack,
@@ -263,27 +278,29 @@ private:
 
         for (std::size_t row{}; row < row_limit; row += SIMD_SIZE) {
             for (std::size_t col{}; col < col_limit; col += SIMD_SIZE) {
-                for (std::size_t r{}; r < SIMD_SIZE; ++r) 
-                    C_rows[r].copy_from(
-                        C + getIndex(col + col_offset, row + row_offset + r), 
+                unroll<SIMD_SIZE>([&]<std::size_t i> {
+                    C_rows[i].copy_from(
+                        C + getIndex(col + col_offset, row + row_offset + i), 
                         stdx::vector_aligned
                     );
+                 });
 
                 for (std::size_t k{}; k < k_limit; ++k) {
                     simd_t b;
                     b.copy_from(&b_pack[k * TILE_SIZE + col], stdx::vector_aligned);
 
-                    for (std::size_t r{}; r < SIMD_SIZE; ++r) {
+                    unroll<SIMD_SIZE>([&]<std::size_t r> {
                         const std::size_t pack_idx = (row + r) * TILE_SIZE + k;
                         C_rows[r] += simd_t(a_pack[pack_idx]) * b;
-                    }
+                    });
                 }
 
-                for (std::size_t r{}; r < SIMD_SIZE; ++r) 
-                    C_rows[r].copy_to(
-                        C + getIndex(col + col_offset, row + row_offset + r), 
+                unroll<SIMD_SIZE>([&]<std::size_t i> {
+                    C_rows[i].copy_to(
+                        C + getIndex(col + col_offset, row + row_offset + i), 
                         stdx::vector_aligned
                     );
+                 });
             }
         }
     }
