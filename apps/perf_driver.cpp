@@ -86,6 +86,7 @@ struct PerfResults {
     long long llc_misses;
     long long instructions;
     long long cycles;
+    long long stalls;
 };
 
 template<typename T, std::size_t N>
@@ -143,7 +144,13 @@ PerfResults get_perf_results(Impl implementation) {
             &perf_results.cycles
         );
 
-        if (perf_l1d && perf_llc && perf_instr && perf_cycles) {
+        auto perf_stalls = PerfEvent::make_event(
+            PERF_TYPE_RAW,
+            0x05f,
+            &perf_results.stalls
+        );
+
+        if (perf_l1d && perf_llc && perf_instr && perf_cycles && perf_stalls) {
             a.multiply(b, result, implementation);
         } 
     }
@@ -155,21 +162,23 @@ template<std::size_t N>
 void perf_size() {
     using T = std::int32_t;
     auto transposed = get_perf_results<T, N>(Impl::TRANSPOSED);
-    auto simd       = get_perf_results<T, N>(Impl::SIMD);
-    auto tiling     = get_perf_results<T, N>(Impl::TILING);
+    auto simd       = get_perf_results<T, N>(Impl::TRANSPOSED_SIMD);
+    auto tiled      = get_perf_results<T, N>(Impl::TILED);
+    auto tiled_simd = get_perf_results<T, N>(Impl::TILED_SIMD);
 
     if constexpr (N < 1024) {
         auto naive      = get_perf_results<T, N>(Impl::NAIVE);
-        std::println("{:4} | NAIVE      | {:11} | {:11} | {:11} | {:11}", N, naive.l1d_misses, naive.llc_misses, naive.instructions, naive.cycles);
+        std::println("{:4} | NAIVE      | {:11} | {:11} | {:11} | {:11} | {:11}", N, naive.l1d_misses, naive.llc_misses, naive.instructions, naive.cycles, naive.stalls);
     }
-    std::println("{:4} | TRANSPOSED | {:11} | {:11} | {:11} | {:11}", N, transposed.l1d_misses, transposed.llc_misses, transposed.instructions, transposed.cycles);
-    std::println("{:4} | SIMD       | {:11} | {:11} | {:11} | {:11}", N, simd.l1d_misses, simd.llc_misses, simd.instructions, simd.cycles);
-    std::println("{:4} | TILING     | {:11} | {:11} | {:11} | {:11}", N, tiling.l1d_misses, tiling.llc_misses, tiling.instructions, tiling.cycles);
+    std::println("{:4} | TRANSPOSED | {:11} | {:11} | {:11} | {:11} | {:11}", N, transposed.l1d_misses, transposed.llc_misses, transposed.instructions, transposed.cycles, transposed.stalls);
+    std::println("{:4} | SIMD       | {:11} | {:11} | {:11} | {:11} | {:11}", N, simd.l1d_misses, simd.llc_misses, simd.instructions, simd.cycles, simd.stalls);
+    std::println("{:4} | TILED      | {:11} | {:11} | {:11} | {:11} | {:11}", N, tiled.l1d_misses, tiled.llc_misses, tiled.instructions, tiled.cycles, tiled.stalls);
+    std::println("{:4} | TILED_SIMD | {:11} | {:11} | {:11} | {:11} | {:11}", N, tiled_simd.l1d_misses, tiled_simd.llc_misses, tiled_simd.instructions, tiled_simd.cycles, tiled_simd.stalls);
 }
 
 int main() {
-    std::println("SIZE | METHOD     | {:11} | {:11} | {:11} | {:11}", "L1D MISSES", "LLC MISSES", "INSTR", "CPU CYCLES");
-    for (int i{}; i < 100; ++i) {
+    std::println("SIZE | METHOD     | {:11} | {:11} | {:11} | {:11} | {:11}", "L1D MISSES", "LLC MISSES", "INSTR", "CPU CYCLES", "STALLS");
+    for (int i{}; i < 10; ++i) {
         // perf_size<4>(); 
         perf_size<8>(); 
         perf_size<16>(); 
@@ -180,6 +189,7 @@ int main() {
         perf_size<512>(); 
         perf_size<1024>(); 
         perf_size<2048>(); 
+        perf_size<4096>(); 
     }
 
     return 0;
