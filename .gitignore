@@ -37,6 +37,7 @@ env/
 
 # --- Benchmark Data & Outputs ---
 # You generally don't want to commit 100MB of old benchmark CSVs
+results/
 *.csv
 *.json
 *.xml
