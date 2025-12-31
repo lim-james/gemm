@@ -2,6 +2,9 @@ mkdir -p results
 
 echo "Starting benchmarks on independent cores..."
 
+sudo cpupower frequency-set -g performance
+echo "[Locked CPU Frequency Scaling]"
+
 # Run SSE2 Benchmark on Core 0
 taskset -c 0 ./build/gemm_benchmark_no_avx --benchmark_format=csv > results/benchmark_sse2.csv &
 PID_SSE_BENCH=$!
@@ -31,4 +34,8 @@ wait $PID_AVX_BENCH
 wait $PID_SSE_PERF
 wait $PID_AVX_PERF
 
+
 echo "benchmarks and perf finished. Results saved in ./results/"
+
+sudo cpupower frequency-set -g powersave
+echo "[Relaxed CPU Frequency Scaling]"
