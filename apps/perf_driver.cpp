@@ -84,9 +84,12 @@ public:
 struct PerfResults {
     long long l1d_misses;
     long long llc_misses;
+    long long tlb_misses;
+    long long page_faults;
     long long instructions;
     long long cycles;
     long long stalls;
+    long long clock;
 };
 
 template<typename T, std::size_t N>
@@ -132,6 +135,20 @@ PerfResults get_perf_results(Impl implementation) {
             &perf_results.llc_misses
         );
 
+        auto perf_tlb = PerfEvent::make_event(
+            PERF_TYPE_HW_CACHE, 
+            (PERF_COUNT_HW_CACHE_DTLB) |
+            (PERF_COUNT_HW_CACHE_OP_READ << 8) |
+            (PERF_COUNT_HW_CACHE_RESULT_MISS << 16),
+            &perf_results.tlb_misses
+        );
+
+        auto perf_page_faults = PerfEvent::make_event(
+            PERF_TYPE_SOFTWARE,
+            PERF_COUNT_SW_PAGE_FAULTS,
+            &perf_results.page_faults
+        );
+
         auto perf_instr = PerfEvent::make_event(
             PERF_TYPE_HARDWARE,
             PERF_COUNT_HW_INSTRUCTIONS,
@@ -144,18 +161,35 @@ PerfResults get_perf_results(Impl implementation) {
             &perf_results.cycles
         );
 
+        auto perf_clock = PerfEvent::make_event(
+            PERF_TYPE_SOFTWARE,
+            PERF_COUNT_SW_CPU_CLOCK,
+            &perf_results.clock
+        );
+
+        constexpr std::uint64_t AMD_BACKEND_STALL_CYCLES = 0x05f;
         auto perf_stalls = PerfEvent::make_event(
             PERF_TYPE_RAW,
-            0x05f,
+            AMD_BACKEND_STALL_CYCLES,
             &perf_results.stalls
         );
 
-        if (perf_l1d && perf_llc && perf_instr && perf_cycles && perf_stalls) {
+        if (perf_l1d   && perf_llc    && perf_tlb    && perf_page_faults && 
+            perf_instr && perf_cycles && perf_stalls && perf_clock) {
             a.multiply(b, result, implementation);
         } 
     }
 
     return perf_results;
+}
+
+void print_row(const std::string& method, std::size_t N, const PerfResults& results) {
+    std::println("| {:4} | {:13} | {:11} | {:11} | {:11} | {:11} | {:11} | {:11} | {:11} | {:11} |", 
+        N, 
+        method,
+        results.l1d_misses,   results.llc_misses, results.tlb_misses, results.page_faults,
+        results.instructions, results.cycles,     results.stalls,     results.clock
+    );
 }
 
 template<std::size_t N>
@@ -170,31 +204,41 @@ void perf_size() {
 
     if constexpr (N < 1024) {
         auto naive      = get_perf_results<T, N>(Impl::NAIVE);
-        std::println("{:4} | NAIVE      | {:11} | {:11} | {:11} | {:11} | {:11}", N, naive.l1d_misses, naive.llc_misses, naive.instructions, naive.cycles, naive.stalls);
+        print_row("NAIVE", N, naive);
     }
-    std::println("{:4} | TRANSPOSED    | {:11} | {:11} | {:11} | {:11} | {:11}", N, transposed.l1d_misses, transposed.llc_misses, transposed.instructions, transposed.cycles, transposed.stalls);
-    std::println("{:4} | SIMD          | {:11} | {:11} | {:11} | {:11} | {:11}", N, simd.l1d_misses, simd.llc_misses, simd.instructions, simd.cycles, simd.stalls);
-    std::println("{:4} | TILED         | {:11} | {:11} | {:11} | {:11} | {:11}", N, tiled.l1d_misses, tiled.llc_misses, tiled.instructions, tiled.cycles, tiled.stalls);
-    std::println("{:4} | TILED_SIMD    | {:11} | {:11} | {:11} | {:11} | {:11}", N, tiled_simd.l1d_misses, tiled_simd.llc_misses, tiled_simd.instructions, tiled_simd.cycles, tiled_simd.stalls);
-    std::println("{:4} | TILED_FETCHED | {:11} | {:11} | {:11} | {:11} | {:11}", N, tiled_prefetch.l1d_misses, tiled_prefetch.llc_misses, tiled_prefetch.instructions, tiled_prefetch.cycles, tiled_prefetch.stalls);
-    std::println("{:4} | TILED_REG     | {:11} | {:11} | {:11} | {:11} | {:11}", N, tiled_reg.l1d_misses, tiled_reg.llc_misses, tiled_reg.instructions, tiled_reg.cycles, tiled_reg.stalls);
+
+    if constexpr (N < 8192) {
+        print_row("TRANSPOSED",    N, transposed);
+        print_row("SIMD",          N, simd);
+    }
+
+    print_row("TILED",         N, tiled);
+    print_row("TILED_SIMD",    N, tiled_simd);
+    print_row("TILED_FETCHED", N, tiled_prefetch);
+    print_row("TILED_REG",     N, tiled_reg);
 }
 
 int main() {
-    std::println("SIZE | METHOD     | {:11} | {:11} | {:11} | {:11} | {:11}", "L1D MISSES", "LLC MISSES", "INSTR", "CPU CYCLES", "STALLS");
+    std::println("| {:4} | {:13} | {:11} | {:11} | {:11} | {:11} | {:11} | {:11} | {:11} | {:11} |", 
+        "SIZE", "METOHD",
+        "L1D MISSES", "LLC MISSES", "TLB MISSES", "PAGE FAULTS", 
+        "INSTR",     "CPU CYCLES", "STALLS",     "CLOCK"
+    );
     for (int i{}; i < 1; ++i) {
         // perf_size<4>(); 
-        perf_size<8>(); 
-        perf_size<16>(); 
-        perf_size<32>(); 
-        perf_size<64>(); 
-        perf_size<128>(); 
-        perf_size<256>(); 
-        perf_size<512>(); 
-        perf_size<1024>(); 
-        perf_size<2048>(); 
-        perf_size<4096>(); 
-        perf_size<8192>(); 
+        perf_size<2 << 3>(); 
+        perf_size<2 << 4>(); 
+        perf_size<2 << 5>(); 
+        perf_size<2 << 6>(); 
+        perf_size<2 << 7>(); 
+        perf_size<2 << 8>(); 
+        perf_size<2 << 9>(); 
+        perf_size<2 << 10>(); 
+        perf_size<2 << 11>(); 
+        perf_size<2 << 12>(); 
+        perf_size<2 << 13>(); 
+        perf_size<2 << 14>(); 
+        perf_size<2 << 15>(); 
     }
 
     return 0;
