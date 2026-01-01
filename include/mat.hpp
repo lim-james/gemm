@@ -16,7 +16,7 @@ namespace stdx = std::experimental::parallelism_v2;
 enum class Impl: char { 
     NAIVE, 
     TRANSPOSED, TRANSPOSED_SIMD, 
-    TILED,      TILED_SIMD,      TILED_PREFETCH
+    TILED,      TILED_SIMD,      TILED_PREFETCH,    TILED_REGISTERS
 };
 
 template<typename T, std::size_t N> requires (N%4==0)
@@ -30,6 +30,9 @@ private:
     static constexpr std::size_t SIMD_SIZE = 1; // Scalar fallback
 #endif    
 
+    static constexpr std::size_t MAT_WIDTH = std::ceil(double(N) / 48.0) * 48ULL;
+    static constexpr std::size_t MAT_SIZE  = MAT_WIDTH * MAT_WIDTH;
+
     using simd_t = stdx::fixed_size_simd<T, SIMD_SIZE>;
 
     static constexpr std::size_t ALIGN = stdx::memory_alignment_v<simd_t>;
@@ -40,7 +43,7 @@ private:
     aligned_vector transposed_;
 
     constexpr static inline std::size_t getIndex(std::size_t x, std::size_t y) {
-        return y * N + x;
+        return y * MAT_WIDTH + x;
     }
 
 public:
@@ -51,8 +54,9 @@ public:
         std::uniform_int_distribution<> distrib(lower_bound, upper_bound); 
 
         SquareMatrix random_matrix{};
-        for (std::size_t i = 0; i < N*N; ++i) 
-            random_matrix.matrix_[i] = distrib(gen);
+        for (std::size_t x = 0; x < N; ++x) 
+            for (std::size_t y = 0; y < N; ++y) 
+                random_matrix.matrix_[getIndex(x,y)] = distrib(gen);
 
         random_matrix.compute_transpose();
 
@@ -60,15 +64,16 @@ public:
     }
 
     constexpr SquareMatrix()
-        : matrix_(N*N)
-        , transposed_(N*N) {}
+        : matrix_(MAT_SIZE)
+        , transposed_(MAT_SIZE) {}
 
     template<typename... Args>
         requires(sizeof...(Args) == N*N && 
                  std::conjunction_v<std::is_nothrow_convertible<Args, T>...>) 
     constexpr SquareMatrix(Args&&... args) 
         : matrix_{static_cast<T>(args)...}
-        , transposed_(N*N) {
+        , transposed_(MAT_SIZE) {
+        matrix_.resize(MAT_SIZE, 0);
         compute_transpose();
     }
 
@@ -105,14 +110,16 @@ public:
         case Impl::TILED:           multiply_tiled(other, out); return;
         case Impl::TILED_SIMD:      multiply_tiled_simd(other, out); return;
         case Impl::TILED_PREFETCH:  multiply_tiled_prefetch(other, out); return;
+        case Impl::TILED_REGISTERS: multiply_tiled_registers(other, out); return;
         default: return;
         }
     }
 
     constexpr bool operator==(const SquareMatrix& other) const {
-        for (std::size_t i = 0; i < N*N; ++i)
-            if (matrix_[i] != other.matrix_[i])
-                return false;
+        for (std::size_t x = 0; x < N; ++x)
+            for (std::size_t y = 0; y < N; ++y)
+                if (matrix_[getIndex(x,y)] != other.matrix_[getIndex(x,y)])
+                    return false;
         return true;
     }
 
@@ -385,5 +392,86 @@ private:
         }
     }
 
+    // =================================================================
+    // SECTION: TILED REGISTERS + SIMD
+    // ON AMD x86-64 :: AVX2 :: 16 YMM regs :: 12(C) + 2(B) + 1(A) = 15
+    // =================================================================
+
+    template<std::size_t TILE_SIZE>
+    void microkernel_6x2(
+        const std::array<T, TILE_SIZE * TILE_SIZE>& a_pack,
+        const std::array<T, TILE_SIZE * TILE_SIZE>& b_pack,
+        T* C,
+        std::size_t row_offset,
+        std::size_t col_offset
+    ) const {
+        static constexpr std::size_t N_ROWS = 6;
+        static constexpr std::size_t N_COLS = 2;
+        static constexpr std::size_t C_REGS = N_ROWS * N_COLS;
+
+        std::array<simd_t, C_REGS> c_regs; 
+        std::array<simd_t, N_COLS> b_regs;
+
+        for (std::size_t row{}; row < TILE_SIZE; row += N_ROWS) {
+            for (std::size_t col{}; col < TILE_SIZE; col += (N_COLS * SIMD_SIZE)) {
+                unroll<N_ROWS>([&]<std::size_t r> {
+                    unroll<N_COLS>([&]<std::size_t c> {
+                        c_regs[r * N_COLS + c].copy_from(
+                            C + getIndex(
+                                col + col_offset + (c * SIMD_SIZE), 
+                                row + row_offset + r
+                            ), 
+                            stdx::vector_aligned
+                        );
+                    });
+                });
+
+                for (std::size_t k{}; k < TILE_SIZE; ++k) {
+                    b_regs[0].copy_from(&b_pack[k * TILE_SIZE + col], stdx::vector_aligned);
+                    b_regs[1].copy_from(&b_pack[k * TILE_SIZE + col + SIMD_SIZE], stdx::vector_aligned);
+
+                    unroll<N_ROWS>([&]<std::size_t i> {
+                        const auto a = simd_t(a_pack[(row + i) * TILE_SIZE + k]);
+                        c_regs[i * 2 + 0] += a * b_regs[0];
+                        c_regs[i * 2 + 1] += a * b_regs[1];
+                    });
+                }
+
+                unroll<N_ROWS>([&]<std::size_t r> {
+                    unroll<N_COLS>([&]<std::size_t c> {
+                        c_regs[r * N_COLS + c].copy_to(
+                            C + getIndex(
+                                col + col_offset + (c * SIMD_SIZE), 
+                                row + row_offset + r
+                            ), 
+                            stdx::vector_aligned
+                        );
+                    });
+                });
+            }
+        }
+    }
+
+    void multiply_tiled_registers(const SquareMatrix& other, SquareMatrix& out) const {
+        static constexpr std::size_t TILE_SIZE = 48;
+
+        const T * a_ptr = matrix_.data();
+        const T * b_ptr = other.matrix_.data();
+        T * c_ptr = out.matrix_.data();
+        
+        alignas(64) std::array<T, TILE_SIZE * TILE_SIZE> a_pack;
+        alignas(64) std::array<T, TILE_SIZE * TILE_SIZE> b_pack;
+
+        for (std::size_t i{}; i < MAT_WIDTH; i += TILE_SIZE) {
+            for (std::size_t k{}; k < MAT_WIDTH; k += TILE_SIZE) {
+                pack_tile_linearly<TILE_SIZE>(a_ptr, i, k, TILE_SIZE, TILE_SIZE, a_pack);
+
+                for (std::size_t j{}; j < MAT_WIDTH; j += TILE_SIZE) {
+                    pack_tile_linearly<TILE_SIZE>(b_ptr, k, j, TILE_SIZE, TILE_SIZE, b_pack);
+                    microkernel_6x2<TILE_SIZE>(a_pack, b_pack, c_ptr, i, j);
+                }
+            }
+        }
+    }
 };
 
