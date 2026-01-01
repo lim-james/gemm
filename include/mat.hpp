@@ -1,6 +1,7 @@
 #pragma once
 
 #include "aligned_allocator.hpp"
+#include "huge_page_allocator.hpp"
 
 #include <array>
 #include <experimental/bits/simd.h>
@@ -35,9 +36,10 @@ private:
 
     using simd_t = stdx::fixed_size_simd<T, SIMD_SIZE>;
 
-    static constexpr std::size_t ALIGN = stdx::memory_alignment_v<simd_t>;
+    // static constexpr std::size_t ALIGN = stdx::memory_alignment_v<simd_t>;
+    // using aligned_vector = std::vector<T, aligned_allocator<T, ALIGN>>;
 
-    using aligned_vector = std::vector<T, aligned_allocator<T, ALIGN>>;
+    using aligned_vector = std::vector<T, huge_page_allocator<T>>;
 
     aligned_vector matrix_;
     aligned_vector transposed_;
@@ -263,11 +265,11 @@ private:
     // SECTION: TILED + SIMD
     // =================================================================
 
-    template<std::size_t COUNT, std::size_t I=0>
+    template<std::size_t COUNT, std::size_t STRIDE=1, std::size_t I=0>
     constexpr void unroll(auto&& fn) const {
         if constexpr (I < COUNT) {
             fn.template operator()<I>();
-            unroll<COUNT, I + 1>(fn);
+            unroll<COUNT, STRIDE, I + STRIDE>(fn);
         }
     }
 
