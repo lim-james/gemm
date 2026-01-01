@@ -36,14 +36,16 @@ void RunBenchmark(benchmark::State& state) {
     BENCHMARK(RunBenchmark<N, Impl::TRANSPOSED_SIMD>) ->Name("Tranposed Simd/" #N); \
     BENCHMARK(RunBenchmark<N, Impl::TILED>)           ->Name("Tiled/" #N); \
     BENCHMARK(RunBenchmark<N, Impl::TILED_SIMD>)      ->Name("Tiled SIMD/" #N); \
-    BENCHMARK(RunBenchmark<N, Impl::TILED_PREFETCH>)  ->Name("Tiled PREFETCH/" #N); 
+    BENCHMARK(RunBenchmark<N, Impl::TILED_PREFETCH>)  ->Name("Tiled PREFETCH/" #N); \
+    BENCHMARK(RunBenchmark<N, Impl::TILED_REGISTERS>)  ->Name("Tiled REGISTERS/" #N); 
 
 #define REGISTER_LARGE_SIZE(N) \
     BENCHMARK(RunBenchmark<N, Impl::TRANSPOSED>)      ->Name("Tranposed/" #N); \
     BENCHMARK(RunBenchmark<N, Impl::TRANSPOSED_SIMD>) ->Name("Tranposed Simd/" #N); \
     BENCHMARK(RunBenchmark<N, Impl::TILED>)           ->Name("Tiled/" #N); \
     BENCHMARK(RunBenchmark<N, Impl::TILED_SIMD>)      ->Name("Tiled SIMD/" #N); \
-    BENCHMARK(RunBenchmark<N, Impl::TILED_PREFETCH>)  ->Name("Tiled PREFETCH/" #N); 
+    BENCHMARK(RunBenchmark<N, Impl::TILED_PREFETCH>)  ->Name("Tiled PREFETCH/" #N); \
+    BENCHMARK(RunBenchmark<N, Impl::TILED_REGISTERS>)  ->Name("Tiled REGISTERS/" #N); 
 
 
 // REGISTER_SIZE(4);
@@ -57,7 +59,7 @@ REGISTER_SIZE(512);
 REGISTER_LARGE_SIZE(1024);
 REGISTER_LARGE_SIZE(2048);
 REGISTER_LARGE_SIZE(4096);
-// REGISTER_LARGE_SIZE(8192);
+REGISTER_LARGE_SIZE(8192);
 
 BENCHMARK_MAIN();
 

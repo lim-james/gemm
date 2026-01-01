@@ -166,6 +166,7 @@ void perf_size() {
     auto tiled          = get_perf_results<T, N>(Impl::TILED);
     auto tiled_simd     = get_perf_results<T, N>(Impl::TILED_SIMD);
     auto tiled_prefetch = get_perf_results<T, N>(Impl::TILED_PREFETCH);
+    auto tiled_reg      = get_perf_results<T, N>(Impl::TILED_REGISTERS);
 
     if constexpr (N < 1024) {
         auto naive      = get_perf_results<T, N>(Impl::NAIVE);
@@ -176,11 +177,12 @@ void perf_size() {
     std::println("{:4} | TILED         | {:11} | {:11} | {:11} | {:11} | {:11}", N, tiled.l1d_misses, tiled.llc_misses, tiled.instructions, tiled.cycles, tiled.stalls);
     std::println("{:4} | TILED_SIMD    | {:11} | {:11} | {:11} | {:11} | {:11}", N, tiled_simd.l1d_misses, tiled_simd.llc_misses, tiled_simd.instructions, tiled_simd.cycles, tiled_simd.stalls);
     std::println("{:4} | TILED_FETCHED | {:11} | {:11} | {:11} | {:11} | {:11}", N, tiled_prefetch.l1d_misses, tiled_prefetch.llc_misses, tiled_prefetch.instructions, tiled_prefetch.cycles, tiled_prefetch.stalls);
+    std::println("{:4} | TILED_REG     | {:11} | {:11} | {:11} | {:11} | {:11}", N, tiled_reg.l1d_misses, tiled_reg.llc_misses, tiled_reg.instructions, tiled_reg.cycles, tiled_reg.stalls);
 }
 
 int main() {
     std::println("SIZE | METHOD     | {:11} | {:11} | {:11} | {:11} | {:11}", "L1D MISSES", "LLC MISSES", "INSTR", "CPU CYCLES", "STALLS");
-    for (int i{}; i < 100; ++i) {
+    for (int i{}; i < 1; ++i) {
         // perf_size<4>(); 
         perf_size<8>(); 
         perf_size<16>(); 
@@ -192,7 +194,7 @@ int main() {
         perf_size<1024>(); 
         perf_size<2048>(); 
         perf_size<4096>(); 
-        //perf_size<8192>(); 
+        perf_size<8192>(); 
     }
 
     return 0;
